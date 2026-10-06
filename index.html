@@ -9,6 +9,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
+  --sheet-line: #b9c2d0; --sheet-head: #4a86e8; --sheet-head-text: #0d1b33;
+  --sheet-head-2: #b4a7d6; --sheet-head-2-text: #1e1633;
   --bg: #f6f7f9;
   --surface: #ffffff;
   --surface-2: #f1f3f6;
@@ -28,6 +30,7 @@
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
+    --sheet-line: #3a4252; --sheet-head: #2c5fb8; --sheet-head-text: #eef3ff; --sheet-head-2: #5b4d8a; --sheet-head-2-text: #f1edff;
     --bg: #0f1218; --surface: #171b23; --surface-2: #1e232d; --border: #2a303c;
     --text: #e7eaf0; --muted: #9aa3b5; --accent: #7d9bff; --accent-soft: #1f2a4d;
     --ok: #5fd39a; --ok-soft: #12321f; --warn: #f2b955; --warn-soft: #3a2c10;
@@ -38,7 +41,8 @@
   }
 }
 :root[data-theme="dark"] {
-  --bg: #0f1218; --surface: #171b23; --surface-2: #1e232d; --border: #2a303c;
+  --sheet-line: #3a4252; --sheet-head: #2c5fb8; --sheet-head-text: #eef3ff; --sheet-head-2: #5b4d8a; --sheet-head-2-text: #f1edff;
+    --bg: #0f1218; --surface: #171b23; --surface-2: #1e232d; --border: #2a303c;
   --text: #e7eaf0; --muted: #9aa3b5; --accent: #7d9bff; --accent-soft: #1f2a4d;
   --ok: #5fd39a; --ok-soft: #12321f; --warn: #f2b955; --warn-soft: #3a2c10;
   --bad: #ff8a80; --bad-soft: #3d1a17; --info: #b7a4ff; --info-soft: #2a2148;
@@ -220,7 +224,7 @@ td.muted, .muted { color: var(--muted); }
 }
 .modal.open { display: flex; }
 .modal-card {
-  background: var(--surface); border-radius: 14px; box-shadow: var(--shadow); width: 100%; max-width: 860px;
+  background: var(--surface); border-radius: 14px; box-shadow: var(--shadow); width: 100%; max-width: 1320px;
   border: 1px solid var(--border);
 }
 .modal-head { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
@@ -238,13 +242,31 @@ textarea {
 .seg { display: inline-flex; background: var(--surface-2); border-radius: 9px; padding: 3px; gap: 2px; flex-wrap: wrap; }
 .seg button { border: 0; background: transparent; padding: 6px 12px; border-radius: 7px; cursor: pointer; font-weight: 600; font-size: 13px; color: var(--muted); }
 .seg button.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
-.tpl-row { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; margin-bottom: 10px; }
-.tpl-row textarea { width: 100%; display: block; }
-.tpl-row .tpl-lab { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 6px; }
-.tpl-row .tpl-lab b { font-size: 13px; }
-.tpl-row .tpl-lab span { font-size: 12px; color: var(--muted); }
-.tpl-row .aux-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
-.tpl-row .aux-grid textarea { min-height: 40px; }
+/* Form skrip: tata letak meniru sheet */
+.sheet-wrap { overflow-x: auto; border: 1px solid var(--sheet-line); border-radius: 6px; }
+.sheet { border-collapse: collapse; width: 100%; min-width: 980px; table-layout: fixed; background: var(--surface); }
+.sheet.narrow { min-width: 760px; }
+.sheet th, .sheet td { border: 1px solid var(--sheet-line); padding: 0; vertical-align: top; position: static; }
+.sheet thead th {
+  background: var(--sheet-head); color: var(--sheet-head-text); text-transform: uppercase; letter-spacing: .02em;
+  font-size: 13px; font-weight: 700; text-align: center; padding: 8px 6px; vertical-align: middle;
+}
+.sheet thead th.sub { font-size: 12px; padding: 4px 6px; }
+.sheet.purple thead th { background: var(--sheet-head-2); color: var(--sheet-head-2-text); }
+.sheet td.lab {
+  background: var(--surface-2); font-size: 11.5px; font-weight: 700; text-align: center; vertical-align: middle;
+  padding: 6px 4px; color: var(--text); text-transform: uppercase;
+}
+.sheet td.lab .del { display: block; margin: 4px auto 0; border: 0; background: none; color: var(--bad); cursor: pointer; font-size: 11px; }
+.sheet textarea {
+  display: block; width: 100%; border: 0; border-radius: 0; background: transparent; min-height: 44px;
+  resize: none; overflow: hidden; padding: 6px 8px; font-size: 12.5px; line-height: 1.45;
+}
+.sheet textarea:focus { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--accent-soft); }
+.sheet td.cap { background: var(--surface); position: relative; }
+.sheet td.cap textarea { position: absolute; inset: 0; height: 100%; min-height: 0; overflow: auto; }
+.sheet tr.tall textarea { min-height: 72px; }
+.add-row { margin-top: 8px; }
 .hint { font-size: 12px; color: var(--muted); }
 
 .toast {
@@ -262,7 +284,7 @@ textarea {
   main { padding: 14px 16px 48px; }
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .stat .num { font-size: 20px; }
-  .grid-2, .grid-4, .captions, .tpl-row .aux-grid { grid-template-columns: 1fr; }
+  .grid-2, .grid-4, .captions { grid-template-columns: 1fr; }
   .pipeline { grid-template-columns: repeat(2, 1fr); }
   .script-row { grid-template-columns: 1fr; }
   .table-wrap { max-height: none; }
@@ -368,8 +390,7 @@ textarea {
       </div>
       <p class="hint" id="tplHint"></p>
       <div id="tplFields"></div>
-      <div id="captionFields"></div>
-    </div>
+          </div>
     <div class="modal-foot">
       <button type="button" class="btn" data-close>Batal</button>
       <button type="submit" class="btn btn-primary" id="saveBtn">Simpan ke Creative</button>
@@ -423,21 +444,22 @@ textarea {
       ["TAHAPAN 4 (CTA)", "Ajakan, mis. tulis \"MAU\" di kolom komentar"],
     ],
     aux: [["footage", "Footage"], ["ket", "Keterangan"]],
-    captions: [["captionTiktok", "Caption TikTok"], ["captionIg", "Caption Instagram"]],
+    captions: [["captionTiktok", "TikTok"], ["captionIg", "Instagram"]],
   };
   const TEMPLATES = {
     VIDEO: VIDEO_TPL,
     YOUTUBE: VIDEO_TPL,
     CAROUSEL: {
-      rows: [["TEMA", "Topik carousel"], ["SLIDE UTAMA", "Cover / judul besar"],
-        ...[2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => [`SLIDE ${n}`, n === 10 ? "Opsional" : ""])],
-      aux: [["ket", "Keterangan desain"]],
+      rows: [["TEMA", "Topik carousel"], ["SLIDE UTAMA", "Cover / judul besar"], ["SLIDE 2", ""], ["SLIDE 3", ""],
+        ["SLIDE 4", ""], ["CTA", "Ajakan, mis. ketik \"MAU\""]],
+      aux: [["ket", "Ket"]],
       captions: [["caption", "Caption"]],
+      dynamic: true,
     },
     SINGLE: {
       rows: [["TITLE HOOK/JUDUL", "Judul besar"], ["SUMBER", "Link sumber info"],
         ["IMAGE / ILUSTRASI", "Gambar / ilustrasi yang dipakai"], ["ISI", "Isi postingan"], ["CTA", "Ajakan"]],
-      aux: [["ket", "Keterangan desain"]],
+      aux: [["ket", "Keterangan"]],
       captions: [["caption", "Caption"]],
     },
   };
@@ -721,21 +743,85 @@ textarea {
     return records.filter(r => r.brand === brand && r.jenis === jenis).reduce((m, r) => Math.max(m, r.no), 0) + 1;
   }
 
-  function renderTplFields(existing) {
+  // Form disusun persis seperti blok skrip di sheet: label | SKRIP n | kolom bantu | CAPTION (gabung semua baris).
+  function rowsFor(existing) {
     const tpl = TEMPLATES[form.jenis];
-    const rows = (existing && existing.rows) || [];
-    const get = (label, k) => (rows.find(x => x.label.replace(/\s+$/, "") === label) || {})[k] || "";
-    $("#tplHint").textContent = `Format mengikuti sheet ${JENIS[form.jenis].sheet}.`;
-    $("#tplFields").innerHTML = tpl.rows.map(([label, hint], i) => `
-      <div class="tpl-row" data-label="${esc(label)}">
-        <div class="tpl-lab"><b>${esc(label)}</b><span>${esc(hint)}</span></div>
-        <textarea name="text" rows="${i < 4 && form.jenis !== "SINGLE" ? 1 : 3}" placeholder="${esc(hint || label)}">${esc(get(label, "text"))}</textarea>
-        <div class="aux-grid" style="${tpl.aux.length === 1 ? "grid-template-columns:1fr" : ""}">
-          ${tpl.aux.map(([k, l]) => `<textarea name="${k}" rows="1" placeholder="${l}">${esc(get(label, k))}</textarea>`).join("")}
-        </div>
-      </div>`).join("");
-    $("#captionFields").innerHTML = `<div class="${tpl.captions.length > 1 ? "grid-2" : ""}">` + tpl.captions.map(([k, l]) =>
-      `<div class="field"><label>${l}</label><textarea name="${k}" rows="5" placeholder="${l} + hashtag">${esc((existing || {})[k] || "")}</textarea></div>`).join("") + `</div>`;
+    const old = (existing && existing.rows) || [];
+    const norm = l => l.replace(/\s+$/, "");
+    if (tpl.dynamic && old.length) {
+      const keep = old.filter(x => x.text || x.ket || ["TEMA", "SLIDE UTAMA"].includes(norm(x.label)));
+      return keep.map(x => ({ ...x, label: norm(x.label), hint: "" }));
+    }
+    return tpl.rows.map(([label, hint]) => ({ ...(old.find(x => norm(x.label) === label) || {}), label, hint }));
+  }
+
+  function rowHtml(row, i, tpl, total, caps) {
+    const tall = /^(HOOK|TAHAPAN|SLIDE|ISI|CTA)/.test(row.label);
+    const removable = tpl.dynamic && /^SLIDE \d+$/.test(row.label);
+    const capCells = i === 0 ? tpl.captions.map(([k, l]) =>
+      `<td class="cap" rowspan="${total}"><textarea name="${k}" placeholder="${l === "Caption" ? "Caption" : "Caption " + l} + hashtag">${esc(caps[k] || "")}</textarea></td>`).join("") : "";
+    return `<tr data-label="${esc(row.label)}" class="${tall ? "tall" : ""}">
+      <td class="lab">${esc(row.label)}${removable ? `<button type="button" class="del" data-del title="Hapus slide">hapus</button>` : ""}</td>
+      <td><textarea name="text" placeholder="${esc(row.hint || "")}">${esc(row.text || "")}</textarea></td>
+      ${tpl.aux.map(([k]) => `<td><textarea name="${k}">${esc(row[k] || "")}</textarea></td>`).join("")}
+      ${capCells}
+    </tr>`;
+  }
+
+  function renderTplFields(existing, rowsOverride, capsOverride) {
+    const tpl = TEMPLATES[form.jenis];
+    const rows = rowsOverride || rowsFor(existing);
+    const caps = capsOverride || existing || {};
+    const video = tpl.aux.length === 2;
+    const cols = video
+      ? `<col style="width:96px"><col style="width:28%"><col style="width:24%"><col style="width:17%"><col style="width:13%"><col style="width:13%">`
+      : `<col style="width:110px"><col style="width:42%"><col style="width:26%"><col style="width:22%">`;
+    const head = video
+      ? `<tr><th colspan="2" rowspan="2" class="no-head">SKRIP ${esc($("#fNo").value)}</th><th rowspan="2">Footage</th><th rowspan="2">Keterangan</th><th colspan="2" class="sub">Caption</th></tr>
+         <tr><th class="sub">TikTok</th><th class="sub">Instagram</th></tr>`
+      : `<tr><th colspan="2" class="no-head">SKRIP ${esc($("#fNo").value)}</th><th>${esc(tpl.aux[0][1])}</th><th>Caption</th></tr>`;
+    $("#tplHint").textContent = `Urutan kolom & baris sama dengan sheet ${JENIS[form.jenis].sheet}.`;
+    $("#tplFields").innerHTML = `<div class="sheet-wrap"><table class="sheet ${video ? "" : "narrow purple"}"><colgroup>${cols}</colgroup>
+      <thead>${head}</thead><tbody>${rows.map((r, i) => rowHtml(r, i, tpl, rows.length, caps)).join("")}</tbody></table></div>
+      ${tpl.dynamic ? `<button type="button" class="btn add-row" data-add-slide>＋ Tambah slide</button>` : ""}`;
+    document.querySelectorAll("#tplFields textarea").forEach(autoGrow);
+  }
+
+  function autoGrow(t) {
+    if (t.closest("td.cap")) return;
+    t.style.height = "auto";
+    t.style.height = t.scrollHeight + 2 + "px";
+  }
+
+  function readRows() {
+    const tpl = TEMPLATES[form.jenis];
+    return [...document.querySelectorAll("#tplFields tr[data-label]")].map(el => {
+      const row = { label: el.dataset.label, text: el.querySelector('[name="text"]').value.trim() };
+      tpl.aux.forEach(([k]) => row[k] = el.querySelector(`[name="${k}"]`).value.trim());
+      return row;
+    });
+  }
+  function readCaps() {
+    const caps = {};
+    TEMPLATES[form.jenis].captions.forEach(([k]) => caps[k] = document.querySelector(`#tplFields [name="${k}"]`).value.trim());
+    return caps;
+  }
+
+  // Carousel: tambah/hapus slide, nomor slide diurutkan ulang (SLIDE UTAMA = slide 1).
+  function relabelSlides(rows) {
+    let n = 2;
+    rows.forEach(r => { if (/^SLIDE \d+$/.test(r.label)) r.label = `SLIDE ${n++}`; });
+    return rows;
+  }
+  function addSlide() {
+    const rows = readRows();
+    const at = rows.findIndex(r => r.label === "CTA");
+    rows.splice(at < 0 ? rows.length : at, 0, { label: "SLIDE 0", text: "", ket: "" });
+    renderTplFields(null, relabelSlides(rows), readCaps());
+  }
+  function removeSlide(label) {
+    const rows = readRows().filter(r => r.label !== label);
+    renderTplFields(null, relabelSlides(rows), readCaps());
   }
 
   function renderSeg() {
@@ -760,21 +846,13 @@ textarea {
     $("#fNo").value = r ? r.no : nextNo($("#fBrand").value, form.jenis);
     renderTplFields(r && r.script);
     $("#modal").classList.add("open");
+    document.querySelectorAll("#tplFields textarea").forEach(autoGrow);
     setTimeout(() => $("#fUsp").focus(), 30);
   }
   function closeForm() { $("#modal").classList.remove("open"); }
 
   function readScript() {
-    const tpl = TEMPLATES[form.jenis];
-    const script = {
-      rows: [...document.querySelectorAll("#tplFields .tpl-row")].map(el => {
-        const row = { label: el.dataset.label, text: el.querySelector('[name="text"]').value.trim() };
-        tpl.aux.forEach(([k]) => row[k] = el.querySelector(`[name="${k}"]`).value.trim());
-        return row;
-      }),
-    };
-    tpl.captions.forEach(([k]) => script[k] = document.querySelector(`#captionFields [name="${k}"]`).value.trim());
-    return script;
+    return Object.assign({ rows: readRows() }, readCaps());
   }
 
   function submitForm(e) {
@@ -913,10 +991,20 @@ textarea {
   $("#modal").addEventListener("click", e => { if (e.target.closest("[data-close]") || e.target.id === "modal") closeForm(); });
   $("#jenisSeg").addEventListener("click", e => {
     const b = e.target.closest("[data-j]"); if (!b || form.editId) return;
-    form.jenis = b.dataset.j; renderSeg(); renderTplFields(null);
+    form.jenis = b.dataset.j; renderSeg();
     $("#fNo").value = nextNo($("#fBrand").value, form.jenis);
+    renderTplFields(null);
   });
-  $("#fBrand").addEventListener("change", () => { $("#fNo").value = nextNo($("#fBrand").value, form.jenis); });
+  $("#fBrand").addEventListener("change", () => {
+    $("#fNo").value = nextNo($("#fBrand").value, form.jenis);
+    document.querySelectorAll("#tplFields .no-head").forEach(th => th.textContent = `SKRIP ${$("#fNo").value}`);
+  });
+  $("#tplFields").addEventListener("input", e => { if (e.target.tagName === "TEXTAREA") autoGrow(e.target); });
+  $("#tplFields").addEventListener("click", e => {
+    if (e.target.closest("[data-add-slide]")) addSlide();
+    const d = e.target.closest("[data-del]");
+    if (d) removeSlide(d.closest("tr").dataset.label);
+  });
 
   $("#linkInput").addEventListener("input", syncLinkOpen);
   $("#linkInput").addEventListener("keydown", e => { if (e.key === "Enter") saveLink(e.target.value.trim()); });

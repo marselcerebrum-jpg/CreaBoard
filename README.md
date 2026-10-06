@@ -11,9 +11,12 @@ Fitur:
 - Tabel Creative gabungan dengan kolom **Jenis Skrip** (Video / Carousel / Single Post / YouTube), tab per jenis,
   filter brand, editor, tahap produksi, pencarian, dan export CSV.
 - Klik **nomor skrip** → panel overview: progres produksi, catatan QC, isi skrip lengkap per bagian + caption.
-- **Buat Skrip** → form mengikuti template sheet (Video: hook + tahapan 1–4 + footage/keterangan + caption TikTok/IG;
-  Carousel: tema + slide utama s/d slide 10; Single post: judul, sumber, ilustrasi, isi, CTA). Saat disimpan langsung
-  masuk ke tabel Creative dengan nomor berikutnya.
+- **Buat Skrip** → form berbentuk tabel dengan urutan kolom & baris sama persis seperti blok skrip di sheet:
+  - Video/YouTube: `SKRIP n | FOOTAGE | KETERANGAN | CAPTION (TIKTOK, INSTAGRAM)`, baris Kata Kunci → Tahapan 4 (CTA)
+  - Carousel: `SKRIP n | KET | CAPTION`, baris Tema, Slide Utama, Slide 2…, CTA (slide bisa ditambah/dihapus)
+  - Single post: `SKRIP n | KETERANGAN | CAPTION`, baris Title Hook/Judul, Sumber, Image/Ilustrasi, Isi, CTA
+
+  Saat disimpan langsung masuk ke tabel Creative dengan nomor berikutnya.
 - Talent, Editor, Creative, Link, QC diisi lewat dropdown; tanggal & jam upload langsung di tabel.
 
 Catatan: ini prototipe interface — perubahan disimpan di `localStorage` browser masing-masing, belum ke database.
