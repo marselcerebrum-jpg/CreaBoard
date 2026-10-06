@@ -1,0 +1,947 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CreaBoard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #f1f3f6;
+  --border: #e3e6eb;
+  --text: #1b1f27;
+  --muted: #687082;
+  --accent: #2f5bea;
+  --accent-soft: #e8eeff;
+  --ok: #16794a;      --ok-soft: #e3f5ec;
+  --warn: #9a5b00;    --warn-soft: #fff1d6;
+  --bad: #b42318;     --bad-soft: #fde8e6;
+  --info: #5b3fc4;    --info-soft: #efeaff;
+  --none: #8a91a0;    --none-soft: #eef0f3;
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 8px 24px rgba(16,24,40,.08);
+  --radius: 10px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1218; --surface: #171b23; --surface-2: #1e232d; --border: #2a303c;
+    --text: #e7eaf0; --muted: #9aa3b5; --accent: #7d9bff; --accent-soft: #1f2a4d;
+    --ok: #5fd39a; --ok-soft: #12321f; --warn: #f2b955; --warn-soft: #3a2c10;
+    --bad: #ff8a80; --bad-soft: #3d1a17; --info: #b7a4ff; --info-soft: #2a2148;
+    --none: #8a93a6; --none-soft: #232833;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1218; --surface: #171b23; --surface-2: #1e232d; --border: #2a303c;
+  --text: #e7eaf0; --muted: #9aa3b5; --accent: #7d9bff; --accent-soft: #1f2a4d;
+  --ok: #5fd39a; --ok-soft: #12321f; --warn: #f2b955; --warn-soft: #3a2c10;
+  --bad: #ff8a80; --bad-soft: #3d1a17; --info: #b7a4ff; --info-soft: #2a2148;
+  --none: #8a93a6; --none-soft: #232833;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font: 14px/1.45 "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+a { color: var(--accent); }
+
+/* ---------- Header ---------- */
+.topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 12px 24px; background: var(--surface); border-bottom: 1px solid var(--border);
+}
+.logo { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 17px; margin-right: auto; }
+.logo-mark {
+  width: 28px; height: 28px; border-radius: 8px; background: var(--accent); color: #fff;
+  display: grid; place-items: center; font-size: 14px;
+}
+.logo small { font-weight: 500; color: var(--muted); font-size: 12px; }
+.btn {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface); border-radius: 8px;
+  padding: 7px 12px; font-weight: 600; font-size: 13px; white-space: nowrap;
+}
+.btn:hover { background: var(--surface-2); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent); filter: brightness(1.08); }
+.btn-ghost { border-color: transparent; background: transparent; }
+.select, .input {
+  border: 1px solid var(--border); background: var(--surface); border-radius: 8px;
+  padding: 7px 10px; font-size: 13px; min-width: 0;
+}
+.select:focus, .input:focus, textarea:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+
+main { max-width: 1440px; margin: 0 auto; padding: 20px 24px 60px; }
+
+/* ---------- Stat tiles ---------- */
+.stats { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+.stat {
+  text-align: left; cursor: pointer; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 12px 14px; transition: border-color .15s, box-shadow .15s;
+}
+.stat:hover { border-color: var(--accent); }
+.stat.active { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.stat .lbl { color: var(--muted); font-size: 12px; font-weight: 500; display: flex; align-items: center; gap: 6px; }
+.stat .num { font-size: 24px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+/* ---------- Tabs + toolbar ---------- */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 12px; overflow-x: auto; }
+.tab {
+  border: 0; background: none; cursor: pointer; padding: 10px 12px; font-weight: 600; color: var(--muted);
+  border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap;
+}
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab .count { font-weight: 500; font-size: 12px; background: var(--surface-2); border-radius: 99px; padding: 1px 7px; margin-left: 4px; }
+.toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; align-items: center; }
+.toolbar .search { flex: 1 1 220px; }
+.toolbar .spacer { flex: 1; }
+
+/* ---------- Table ---------- */
+.table-wrap {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  overflow: auto; max-height: calc(100vh - 300px); min-height: 300px;
+}
+table { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 1240px; }
+th, td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
+th {
+  position: sticky; top: 0; z-index: 2; background: var(--surface-2); font-size: 11px;
+  text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; white-space: nowrap;
+}
+tbody tr:hover td { background: color-mix(in srgb, var(--accent-soft) 40%, transparent); }
+td.usp { max-width: 260px; }
+td.usp .t { font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+td.muted, .muted { color: var(--muted); }
+.no-btn {
+  cursor: pointer; border: 1px solid var(--border); background: var(--surface); border-radius: 7px;
+  font-weight: 700; padding: 3px 9px; font-variant-numeric: tabular-nums; color: var(--accent);
+}
+.no-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+.badge {
+  display: inline-flex; align-items: center; gap: 5px; border-radius: 99px; padding: 2px 9px;
+  font-size: 11.5px; font-weight: 600; white-space: nowrap;
+}
+.j-VIDEO { background: var(--accent-soft); color: var(--accent); }
+.j-CAROUSEL { background: var(--info-soft); color: var(--info); }
+.j-SINGLE { background: var(--warn-soft); color: var(--warn); }
+.j-YOUTUBE { background: var(--bad-soft); color: var(--bad); }
+
+/* status dropdown pills */
+.pill {
+  appearance: none; -webkit-appearance: none; cursor: pointer; border: 1px solid transparent;
+  border-radius: 99px; padding: 3px 24px 3px 10px; font-size: 12px; font-weight: 600;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 12px) 52%, calc(100% - 8px) 52%;
+  background-size: 4px 4px, 4px 4px; background-repeat: no-repeat; max-width: 150px;
+}
+.pill:focus { outline: 2px solid var(--accent-soft); }
+.s-ok { background-color: var(--ok-soft); color: var(--ok); }
+.s-warn { background-color: var(--warn-soft); color: var(--warn); }
+.s-bad { background-color: var(--bad-soft); color: var(--bad); }
+.s-info { background-color: var(--info-soft); color: var(--info); }
+.s-none { background-color: var(--none-soft); color: var(--none); }
+.s-acc { background-color: var(--accent-soft); color: var(--accent); }
+.na { color: var(--none); font-size: 12px; }
+
+.link-cell { position: relative; }
+.link-btn { max-width: 130px; overflow: hidden; text-overflow: ellipsis; }
+.popover {
+  position: fixed; z-index: 60; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px; width: 320px; max-width: calc(100vw - 32px);
+}
+.popover label { font-size: 12px; color: var(--muted); font-weight: 600; display: block; margin-bottom: 6px; }
+.popover .row { display: flex; gap: 6px; margin-top: 8px; }
+.popover .input { width: 100%; }
+.upload-cell { display: flex; gap: 4px; }
+.upload-cell input { width: 118px; padding: 4px 6px; font-size: 12px; }
+.upload-cell input.jam { width: 62px; }
+.note-cell { max-width: 200px; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.pager { display: flex; align-items: center; gap: 8px; justify-content: space-between; padding: 10px 2px; color: var(--muted); font-size: 13px; flex-wrap: wrap; }
+.empty { padding: 48px 16px; text-align: center; color: var(--muted); }
+
+/* ---------- Drawer ---------- */
+.scrim { position: fixed; inset: 0; background: rgba(10,14,22,.45); z-index: 40; opacity: 0; pointer-events: none; transition: opacity .2s; }
+.scrim.open { opacity: 1; pointer-events: auto; }
+.drawer {
+  position: fixed; top: 0; right: 0; height: 100%; width: min(720px, 100vw); z-index: 50;
+  background: var(--surface); border-left: 1px solid var(--border); box-shadow: var(--shadow);
+  transform: translateX(100%); transition: transform .25s ease; display: flex; flex-direction: column;
+}
+.drawer.open { transform: none; }
+.drawer-head { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; align-items: flex-start; }
+.drawer-head h2 { margin: 4px 0 2px; font-size: 18px; line-height: 1.3; }
+.drawer-body { overflow-y: auto; padding: 18px 20px 32px; flex: 1; }
+.drawer-foot { border-top: 1px solid var(--border); padding: 12px 20px; display: flex; gap: 8px; justify-content: space-between; }
+.section-title { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; margin: 22px 0 10px; }
+.section-title:first-child { margin-top: 0; }
+
+.pipeline { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.step { border-radius: 8px; padding: 8px 10px; background: var(--surface-2); border: 1px solid var(--border); }
+.step .k { font-size: 11px; color: var(--muted); font-weight: 600; }
+.step .v { font-weight: 700; font-size: 13px; margin-top: 2px; overflow-wrap: anywhere; }
+.step.done { background: var(--ok-soft); border-color: transparent; }
+.step.done .v { color: var(--ok); }
+.step.prog { background: var(--warn-soft); border-color: transparent; }
+.step.prog .v { color: var(--warn); }
+.step.bad { background: var(--bad-soft); border-color: transparent; }
+.step.bad .v { color: var(--bad); }
+
+.meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px 16px; }
+.meta .k { font-size: 11.5px; color: var(--muted); font-weight: 600; }
+.meta .v { overflow-wrap: anywhere; }
+
+.script-block { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.script-row { display: grid; grid-template-columns: 130px 1fr; border-bottom: 1px solid var(--border); }
+.script-row:last-child { border-bottom: 0; }
+.script-row .lab { background: var(--surface-2); padding: 10px 12px; font-size: 12px; font-weight: 700; color: var(--muted); }
+.script-row .val { padding: 10px 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.script-row .val .aux { margin-top: 8px; font-size: 12px; color: var(--muted); border-left: 3px solid var(--border); padding-left: 8px; }
+.script-row .val .aux b { color: var(--text); font-weight: 600; }
+.caption-box { background: var(--surface-2); border-radius: var(--radius); padding: 12px 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.captions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.captions .k { font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 6px; }
+
+/* ---------- Modal (Buat Skrip) ---------- */
+.modal {
+  position: fixed; z-index: 55; inset: 0; display: none; align-items: flex-start; justify-content: center;
+  padding: 32px 16px; overflow-y: auto; background: rgba(10,14,22,.45);
+}
+.modal.open { display: flex; }
+.modal-card {
+  background: var(--surface); border-radius: 14px; box-shadow: var(--shadow); width: 100%; max-width: 860px;
+  border: 1px solid var(--border);
+}
+.modal-head { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.modal-head h2 { margin: 0; font-size: 18px; }
+.modal-body { padding: 18px 20px; }
+.modal-foot { padding: 12px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; position: sticky; bottom: 0; background: var(--surface); border-radius: 0 0 14px 14px; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.field label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 5px; }
+.field .input, .field .select, .field textarea { width: 100%; }
+textarea {
+  border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 8px 10px;
+  resize: vertical; min-height: 64px; font-size: 13px;
+}
+.seg { display: inline-flex; background: var(--surface-2); border-radius: 9px; padding: 3px; gap: 2px; flex-wrap: wrap; }
+.seg button { border: 0; background: transparent; padding: 6px 12px; border-radius: 7px; cursor: pointer; font-weight: 600; font-size: 13px; color: var(--muted); }
+.seg button.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.tpl-row { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; margin-bottom: 10px; }
+.tpl-row textarea { width: 100%; display: block; }
+.tpl-row .tpl-lab { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.tpl-row .tpl-lab b { font-size: 13px; }
+.tpl-row .tpl-lab span { font-size: 12px; color: var(--muted); }
+.tpl-row .aux-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.tpl-row .aux-grid textarea { min-height: 40px; }
+.hint { font-size: 12px; color: var(--muted); }
+
+.toast {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(20px); z-index: 70;
+  background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-weight: 600;
+  opacity: 0; transition: all .2s; pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translateX(-50%); }
+
+@media (max-width: 1000px) {
+  .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .topbar { padding: 10px 16px; }
+  main { padding: 14px 16px 48px; }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .stat .num { font-size: 20px; }
+  .grid-2, .grid-4, .captions, .tpl-row .aux-grid { grid-template-columns: 1fr; }
+  .pipeline { grid-template-columns: repeat(2, 1fr); }
+  .script-row { grid-template-columns: 1fr; }
+  .table-wrap { max-height: none; }
+  .modal { padding: 0; }
+  .modal-card { border-radius: 0; min-height: 100%; }
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="logo"><span class="logo-mark">C</span>CreaBoard <small>· Data Konten Marketing</small></div>
+  <select id="brandSel" class="select" aria-label="Brand"></select>
+  <button class="btn btn-ghost" id="themeBtn" title="Ganti tema terang/gelap" aria-label="Ganti tema">☾ Tema</button>
+  <button class="btn btn-primary" id="newBtn">＋ Buat Skrip</button>
+</header>
+
+<main>
+  <section class="stats" id="stats"></section>
+
+  <nav class="tabs" id="tabs"></nav>
+
+  <div class="toolbar">
+    <input id="search" class="input search" type="search" placeholder="Cari no. skrip, USP/keyword, catatan…">
+    <select id="editorFilter" class="select" aria-label="Filter editor"></select>
+    <select id="sortSel" class="select" aria-label="Urutan">
+      <option value="new">Terbaru dibuat</option>
+      <option value="old">Terlama dibuat</option>
+      <option value="no-desc">No. skrip ↓</option>
+      <option value="no-asc">No. skrip ↑</option>
+    </select>
+    <span class="spacer"></span>
+    <button class="btn" id="exportBtn">⇩ Export CSV</button>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>No</th>
+          <th>Jenis Skrip</th>
+          <th>Tgl Dibuat</th>
+          <th>USP / Keyword</th>
+          <th>Info Skrip</th>
+          <th>Talent</th>
+          <th>Editor</th>
+          <th>Creative</th>
+          <th>Link</th>
+          <th>QC</th>
+          <th>Upload (tgl · jam)</th>
+          <th>Tahap</th>
+          <th>Catatan</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div id="empty" class="empty" hidden></div>
+  </div>
+  <div class="pager" id="pager"></div>
+</main>
+
+<!-- Drawer overview -->
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="drawer-head">
+    <div style="flex:1;min-width:0" id="drawerHead"></div>
+    <button class="btn btn-ghost" id="drawerClose" aria-label="Tutup">✕</button>
+  </div>
+  <div class="drawer-body" id="drawerBody"></div>
+  <div class="drawer-foot">
+    <div style="display:flex;gap:6px">
+      <button class="btn" id="prevBtn">← Sebelumnya</button>
+      <button class="btn" id="nextBtn">Berikutnya →</button>
+    </div>
+    <div style="display:flex;gap:6px">
+      <button class="btn" id="copyBtn">Salin skrip</button>
+      <button class="btn btn-primary" id="editBtn">Edit skrip</button>
+    </div>
+  </div>
+</aside>
+
+<!-- Modal Buat / Edit skrip -->
+<div class="modal" id="modal" role="dialog" aria-modal="true">
+  <form class="modal-card" id="form" autocomplete="off">
+    <div class="modal-head">
+      <h2 id="modalTitle">Buat Skrip Konten</h2>
+      <button type="button" class="btn btn-ghost" data-close aria-label="Tutup">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field" style="margin-bottom:14px">
+        <label>Jenis skrip</label>
+        <div class="seg" id="jenisSeg"></div>
+      </div>
+      <div class="grid-4" style="margin-bottom:12px">
+        <div class="field"><label for="fBrand">Brand</label><select id="fBrand" class="select"></select></div>
+        <div class="field"><label for="fNo">No. skrip</label><input id="fNo" class="input" readonly></div>
+        <div class="field"><label for="fTgl">Tanggal dibuat</label><input id="fTgl" type="date" class="input" required></div>
+        <div class="field"><label for="fInfo">Info skrip</label><select id="fInfo" class="select"></select></div>
+      </div>
+      <div class="field" style="margin-bottom:6px">
+        <label for="fUsp">USP / Keyword / Judul</label>
+        <input id="fUsp" class="input" required placeholder="mis. Try Out CPNS Gratis">
+      </div>
+      <p class="hint" id="tplHint"></p>
+      <div id="tplFields"></div>
+      <div id="captionFields"></div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn" data-close>Batal</button>
+      <button type="submit" class="btn btn-primary" id="saveBtn">Simpan ke Creative</button>
+    </div>
+  </form>
+</div>
+
+<div class="popover" id="linkPop" hidden>
+  <label for="linkInput">Link video / Canva / YouTube</label>
+  <select id="linkKind" class="select" style="width:100%;margin-bottom:6px">
+    <option value="">— Pilih sumber —</option>
+    <option value="drive">Google Drive</option>
+    <option value="canva">Canva</option>
+    <option value="youtube">YouTube</option>
+    <option value="other">Lainnya / nama file</option>
+  </select>
+  <input id="linkInput" class="input" placeholder="Tempel link di sini">
+  <div class="row">
+    <button type="button" class="btn btn-primary" id="linkSave">Simpan</button>
+    <a class="btn" id="linkOpen" target="_blank" rel="noopener">Buka ↗</a>
+    <button type="button" class="btn btn-ghost" id="linkClear">Hapus</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="data/seed.js"></script>
+<script>
+(() => {
+  "use strict";
+
+  // ---------- Konstanta ----------
+  const BRANDS = ["JADIASN", "JADIBUMN", "CEREBRUM", "JADIPOLISI", "JADIPRAJURIT", "JADISEKDIN", "JADIBEASISWA",
+    "JADIPPPK", "JADIOJK", "JADIPCPM", "JADIPPG", "PSIKOTES KERJA", "TOEFL ACADEMY", "JADINAKES", "JAGO TPA"];
+  const JENIS = {
+    VIDEO: { label: "Video", sheet: "SKRIP KONTEN", talent: true },
+    CAROUSEL: { label: "Carousel", sheet: "SKRIP CARROUSEL", talent: false },
+    SINGLE: { label: "Single Post", sheet: "SKRIP SINGLE POST", talent: false },
+    YOUTUBE: { label: "YouTube", sheet: "SKRIP KONTEN (format video)", talent: true },
+  };
+  const VIDEO_TPL = {
+    rows: [
+      ["KATA KUNCI", "Keyword utama konten"],
+      ["KONSEP KONTEN", "Format / gaya video"],
+      ["LINK CONTOH VIDEO", "Referensi video"],
+      ["VISUAL HOOK", "Teks besar di layar 3 detik pertama"],
+      ["HOOK", "Kalimat pembuka"],
+      ["TAHAPAN 1", "Masalah / pain audiens"],
+      ["TAHAPAN 2", "Solusi / produk"],
+      ["TAHAPAN 3", "Urgensi"],
+      ["TAHAPAN 4 (CTA)", "Ajakan, mis. tulis \"MAU\" di kolom komentar"],
+    ],
+    aux: [["footage", "Footage"], ["ket", "Keterangan"]],
+    captions: [["captionTiktok", "Caption TikTok"], ["captionIg", "Caption Instagram"]],
+  };
+  const TEMPLATES = {
+    VIDEO: VIDEO_TPL,
+    YOUTUBE: VIDEO_TPL,
+    CAROUSEL: {
+      rows: [["TEMA", "Topik carousel"], ["SLIDE UTAMA", "Cover / judul besar"],
+        ...[2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => [`SLIDE ${n}`, n === 10 ? "Opsional" : ""])],
+      aux: [["ket", "Keterangan desain"]],
+      captions: [["caption", "Caption"]],
+    },
+    SINGLE: {
+      rows: [["TITLE HOOK/JUDUL", "Judul besar"], ["SUMBER", "Link sumber info"],
+        ["IMAGE / ILUSTRASI", "Gambar / ilustrasi yang dipakai"], ["ISI", "Isi postingan"], ["CTA", "Ajakan"]],
+      aux: [["ket", "Keterangan desain"]],
+      captions: [["caption", "Caption"]],
+    },
+  };
+  const OPTS = {
+    info: ["SKRIP READY", "SKRIP URGENT", "PROGRESS"],
+    talent: ["", "PROGRESS", "DONE"],
+    creative: ["", "PROGRESS", "EDITING", "DONE"],
+    qc: ["", "REVISI", "DONE", "CANCEL"],
+  };
+  const TONE = {
+    "SKRIP READY": "s-ok", "SKRIP URGENT": "s-bad", PROGRESS: "s-warn", EDITING: "s-warn",
+    DONE: "s-ok", REVISI: "s-warn", CANCEL: "s-bad", "": "s-none",
+  };
+  const STAGES = {
+    all: { label: "Total skrip", color: "var(--text)" },
+    antri: { label: "Belum diproduksi", color: "var(--none)" },
+    produksi: { label: "Dalam produksi", color: "var(--accent)" },
+    revisi: { label: "Revisi QC", color: "var(--warn)" },
+    siap: { label: "Siap upload", color: "var(--info)" },
+    upload: { label: "Terupload / terjadwal", color: "var(--ok)" },
+  };
+  const PAGE = 50;
+  const STORE_KEY = "creaboard.v1";
+  const TODAY = new Date().toISOString().slice(0, 10);
+
+  // ---------- State + penyimpanan ----------
+  const seed = (window.CREABOARD_SEED || []).map(r => ({ ...r }));
+  let store = { edits: {}, created: [], editors: [] };
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw) store = Object.assign(store, JSON.parse(raw));
+  } catch (e) { /* storage tidak tersedia, jalan tanpa simpan */ }
+  const save = () => { try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch (e) { toast("Gagal menyimpan ke browser"); } };
+
+  const records = seed.concat(store.created.map(r => ({ ...r })));
+  records.forEach(r => Object.assign(r, store.edits[r.id] || {}));
+
+  const ui = { brand: "JADIASN", jenis: "ALL", stage: "all", q: "", editor: "", sort: "new", page: 1, openId: null, view: [] };
+
+  // ---------- Util ----------
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const fmtDate = d => {
+    if (!d) return "";
+    const t = new Date(d + "T00:00:00");
+    return isNaN(t) ? d : t.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
+  };
+  let toastT;
+  function toast(msg) { const el = $("#toast"); el.textContent = msg; el.classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("show"), 2200); }
+
+  function stageOf(r) {
+    if (r.qc === "CANCEL") return "cancel";
+    if (r.uploadTgl) return "upload";
+    if (r.qc === "REVISI") return "revisi";
+    if (r.qc === "DONE") return "siap";
+    if (r.talent || r.creative || r.editor || r.link) return "produksi";
+    return "antri";
+  }
+  const STAGE_BADGE = {
+    antri: ["Belum diproduksi", "s-none"], produksi: ["Produksi", "s-acc"], revisi: ["Revisi", "s-warn"],
+    siap: ["Siap upload", "s-info"], upload: ["Terupload", "s-ok"], cancel: ["Cancel", "s-bad"],
+  };
+  function stageBadge(r) {
+    const st = stageOf(r);
+    let [lbl, cls] = STAGE_BADGE[st];
+    if (st === "upload" && r.uploadTgl > TODAY) lbl = "Terjadwal";
+    return `<span class="badge ${cls}">${lbl}</span>`;
+  }
+
+  function update(r, patch) {
+    Object.assign(r, patch);
+    if (r._created) {
+      const i = store.created.findIndex(x => x.id === r.id);
+      if (i >= 0) store.created[i] = { ...r };
+    } else {
+      store.edits[r.id] = Object.assign(store.edits[r.id] || {}, patch);
+    }
+    save();
+  }
+
+  function editorOptions() {
+    const set = new Set(store.editors);
+    records.forEach(r => r.editor && set.add(r.editor));
+    return [...set].sort();
+  }
+
+  // ---------- Header & filter ----------
+  function renderBrandSel() {
+    const counts = {};
+    records.forEach(r => counts[r.brand] = (counts[r.brand] || 0) + 1);
+    $("#brandSel").innerHTML = `<option value="ALL">Semua brand (${records.length})</option>` +
+      BRANDS.map(b => `<option value="${esc(b)}" ${b === ui.brand ? "selected" : ""}>${esc(b)} (${counts[b] || 0})</option>`).join("");
+    if (ui.brand === "ALL") $("#brandSel").value = "ALL";
+  }
+
+  function renderEditorFilter() {
+    $("#editorFilter").innerHTML = `<option value="">Semua editor</option><option value="__none">Belum ada editor</option>` +
+      editorOptions().map(e => `<option ${e === ui.editor ? "selected" : ""}>${esc(e)}</option>`).join("");
+    $("#editorFilter").value = ui.editor;
+  }
+
+  function scoped() {
+    return records.filter(r => ui.brand === "ALL" || r.brand === ui.brand);
+  }
+
+  function filtered() {
+    const q = ui.q.trim().toLowerCase();
+    let list = scoped().filter(r =>
+      (ui.jenis === "ALL" || r.jenis === ui.jenis) &&
+      (ui.stage === "all" || stageOf(r) === ui.stage) &&
+      (!ui.editor || (ui.editor === "__none" ? !r.editor : r.editor === ui.editor)) &&
+      (!q || String(r.no) === q || [r.usp, r.catatan, r.keterangan, r.editor, r.link].some(v => (v || "").toLowerCase().includes(q)))
+    );
+    const by = {
+      new: (a, b) => (b.tgl || "").localeCompare(a.tgl || "") || b.no - a.no,
+      old: (a, b) => (a.tgl || "").localeCompare(b.tgl || "") || a.no - b.no,
+      "no-desc": (a, b) => b.no - a.no || a.jenis.localeCompare(b.jenis),
+      "no-asc": (a, b) => a.no - b.no || a.jenis.localeCompare(b.jenis),
+    }[ui.sort];
+    return list.sort(by);
+  }
+
+  function renderStats() {
+    const base = scoped().filter(r => ui.jenis === "ALL" || r.jenis === ui.jenis);
+    const n = { all: base.length, antri: 0, produksi: 0, revisi: 0, siap: 0, upload: 0 };
+    base.forEach(r => { const s = stageOf(r); if (s in n) n[s]++; });
+    $("#stats").innerHTML = Object.entries(STAGES).map(([k, s]) =>
+      `<button class="stat ${ui.stage === k ? "active" : ""}" data-stage="${k}">
+        <div class="lbl"><span class="dot" style="background:${s.color}"></span>${s.label}</div>
+        <div class="num">${n[k].toLocaleString("id-ID")}</div>
+      </button>`).join("");
+  }
+
+  function renderTabs() {
+    const base = scoped();
+    const c = j => base.filter(r => j === "ALL" || r.jenis === j).length;
+    $("#tabs").innerHTML = [["ALL", "Semua"], ...Object.entries(JENIS).map(([k, v]) => [k, v.label])]
+      .map(([k, l]) => `<button class="tab ${ui.jenis === k ? "active" : ""}" data-jenis="${k}">${l}<span class="count">${c(k)}</span></button>`).join("");
+  }
+
+  // ---------- Tabel ----------
+  function pill(field, r, opts) {
+    const v = r[field] || "";
+    const list = opts.includes(v) ? opts : [...opts, v];
+    return `<select class="pill ${TONE[v] || "s-acc"}" data-field="${field}" data-id="${esc(r.id)}" aria-label="${field}">` +
+      list.map(o => `<option value="${esc(o)}" ${o === v ? "selected" : ""}>${o ? esc(o) : "—"}</option>`).join("") + `</select>`;
+  }
+  function editorPill(r) {
+    const v = r.editor || "";
+    return `<select class="pill ${v ? "s-acc" : "s-none"}" data-field="editor" data-id="${esc(r.id)}" aria-label="editor">
+      <option value="">—</option>${editorOptions().map(e => `<option ${e === v ? "selected" : ""}>${esc(e)}</option>`).join("")}
+      <option value="__add">＋ Tambah editor…</option></select>`;
+  }
+  function linkCell(r) {
+    const v = r.link || "";
+    const label = !v ? "＋ Link" : /drive\.google/.test(v) ? "Drive" : /canva/.test(v) ? "Canva" : /youtu/.test(v) ? "YouTube" : v;
+    return `<button class="pill link-btn ${v ? "s-acc" : "s-none"}" data-link="${esc(r.id)}" title="${esc(v)}">${esc(label)}</button>`;
+  }
+
+  function renderTable() {
+    const list = filtered();
+    ui.view = list;
+    const pages = Math.max(1, Math.ceil(list.length / PAGE));
+    ui.page = Math.min(ui.page, pages);
+    const slice = list.slice((ui.page - 1) * PAGE, ui.page * PAGE);
+    $("#rows").innerHTML = slice.map(r => `
+      <tr>
+        <td><button class="no-btn" data-open="${esc(r.id)}" title="Lihat overview skrip">${r.no}</button></td>
+        <td><span class="badge j-${r.jenis}">${JENIS[r.jenis].label}</span>${ui.brand === "ALL" ? `<div class="muted" style="font-size:11px;margin-top:3px">${esc(r.brand)}</div>` : ""}</td>
+        <td class="muted" style="white-space:nowrap">${fmtDate(r.tgl)}</td>
+        <td class="usp"><div class="t" title="${esc(r.usp)}">${esc(r.usp) || '<span class="muted">—</span>'}</div></td>
+        <td>${pill("info", r, OPTS.info)}</td>
+        <td>${JENIS[r.jenis].talent ? pill("talent", r, OPTS.talent) : '<span class="na">n/a</span>'}</td>
+        <td>${editorPill(r)}</td>
+        <td>${pill("creative", r, OPTS.creative)}</td>
+        <td class="link-cell">${linkCell(r)}</td>
+        <td>${pill("qc", r, OPTS.qc)}</td>
+        <td><div class="upload-cell">
+          <input class="input" type="date" value="${esc(r.uploadTgl)}" data-field="uploadTgl" data-id="${esc(r.id)}" aria-label="Tanggal upload">
+          <input class="input jam" value="${esc(r.uploadJam)}" placeholder="jam" data-field="uploadJam" data-id="${esc(r.id)}" aria-label="Jam upload">
+        </div></td>
+        <td>${stageBadge(r)}</td>
+        <td><div class="note-cell" title="${esc([r.catatan, r.keterangan].filter(Boolean).join(" · "))}">${esc([r.catatan, r.keterangan].filter(Boolean).join(" · ")) || "—"}</div></td>
+      </tr>`).join("");
+    const empty = $("#empty");
+    empty.hidden = list.length > 0;
+    if (!list.length) {
+      empty.innerHTML = scoped().length ? "Tidak ada skrip yang cocok dengan filter." :
+        `Belum ada skrip untuk <b>${esc(ui.brand)}</b>.<br><br><button class="btn btn-primary" data-new>＋ Buat skrip pertama</button>`;
+    }
+    const from = list.length ? (ui.page - 1) * PAGE + 1 : 0;
+    $("#pager").innerHTML = `<span>Menampilkan ${from}–${Math.min(ui.page * PAGE, list.length)} dari ${list.length} skrip</span>
+      <span style="display:flex;gap:6px;align-items:center">
+        <button class="btn" data-page="${ui.page - 1}" ${ui.page <= 1 ? "disabled" : ""}>‹</button>
+        <span>Hal ${ui.page} / ${pages}</span>
+        <button class="btn" data-page="${ui.page + 1}" ${ui.page >= pages ? "disabled" : ""}>›</button>
+      </span>`;
+  }
+
+  function renderAll() { renderBrandSel(); renderStats(); renderTabs(); renderEditorFilter(); renderTable(); }
+
+  // ---------- Overview drawer ----------
+  function scriptHtml(r) {
+    const s = r.script;
+    if (!s || !(s.rows || []).some(x => x.text || x.footage || x.ket)) {
+      return `<div class="empty" style="padding:24px;border:1px dashed var(--border);border-radius:10px">
+        Isi skrip belum ada di sheet ${esc(JENIS[r.jenis].sheet)}.<br><br>
+        <button class="btn" data-edit>Tulis skrip sekarang</button></div>`;
+    }
+    const rows = s.rows.filter(x => x.text || x.footage || x.ket).map(x => {
+      const aux = [["Footage", x.footage], ["Keterangan", x.ket]].filter(a => a[1])
+        .map(([k, v]) => `<div class="aux"><b>${k}:</b> ${/^https?:\/\//.test(v) ? `<a href="${esc(v)}" target="_blank" rel="noopener">${esc(v)}</a>` : esc(v)}</div>`).join("");
+      return `<div class="script-row"><div class="lab">${esc(x.label)}</div><div class="val">${esc(x.text) || '<span class="muted">—</span>'}${aux}</div></div>`;
+    }).join("");
+    const caps = TEMPLATES[r.jenis].captions.filter(([k]) => s[k]);
+    const capHtml = caps.length ? `<div class="section-title">Caption</div><div class="captions" style="${caps.length === 1 ? "grid-template-columns:1fr" : ""}">` +
+      caps.map(([k, l]) => `<div><div class="k">${l}</div><div class="caption-box">${esc(s[k])}</div></div>`).join("") + `</div>` : "";
+    return `<div class="script-block">${rows}</div>${capHtml}`;
+  }
+
+  function stepHtml(k, v, na) {
+    if (na) return `<div class="step"><div class="k">${k}</div><div class="v muted">n/a</div></div>`;
+    const cls = v === "DONE" || (k === "Upload" && v) ? "done" : v === "REVISI" || v === "PROGRESS" || v === "EDITING" ? "prog" : v === "CANCEL" ? "bad" : "";
+    return `<div class="step ${cls}"><div class="k">${k}</div><div class="v">${esc(v) || '<span class="muted">Belum</span>'}</div></div>`;
+  }
+
+  function openDrawer(id) {
+    const r = records.find(x => x.id === id);
+    if (!r) return;
+    ui.openId = id;
+    $("#drawerHead").innerHTML = `
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <span class="badge j-${r.jenis}">${JENIS[r.jenis].label}</span>
+        <span class="badge s-none">${esc(r.brand)}</span>
+        <span class="badge ${TONE[r.info] || "s-none"}">${esc(r.info) || "—"}</span>
+        ${stageBadge(r)}
+      </div>
+      <h2>Skrip ${r.no} · ${esc(r.usp) || "Tanpa judul"}</h2>
+      <div class="muted" style="font-size:12px">Dibuat ${fmtDate(r.tgl) || "—"} oleh tim marketing</div>`;
+    $("#drawerBody").innerHTML = `
+      <div class="section-title">Progres produksi</div>
+      <div class="pipeline">
+        ${stepHtml("Talent", r.talent, !JENIS[r.jenis].talent)}
+        ${stepHtml("Editor", r.editor)}
+        ${stepHtml("Creative", r.creative)}
+        ${stepHtml("QC", r.qc)}
+        ${stepHtml("Upload", r.uploadTgl ? fmtDate(r.uploadTgl) + (r.uploadJam ? " · " + r.uploadJam : "") : "")}
+      </div>
+      <div class="section-title">Detail</div>
+      <div class="meta">
+        <div><div class="k">Link hasil</div><div class="v">${r.link ? (/^https?:/.test(r.link) ? `<a href="${esc(r.link)}" target="_blank" rel="noopener">Buka link ↗</a>` : esc(r.link)) : "—"}</div></div>
+        <div><div class="k">Catatan QC / evaluasi</div><div class="v">${esc(r.catatan) || "—"}</div></div>
+        <div><div class="k">Keterangan</div><div class="v">${esc(r.keterangan) || "—"}</div></div>
+      </div>
+      <div class="section-title">Isi skrip <span style="text-transform:none;letter-spacing:0;font-weight:500">· ${esc(JENIS[r.jenis].sheet)}</span></div>
+      ${scriptHtml(r)}`;
+    $("#drawer").classList.add("open");
+    $("#drawer").setAttribute("aria-hidden", "false");
+    $("#scrim").classList.add("open");
+    const i = ui.view.findIndex(x => x.id === id);
+    $("#prevBtn").disabled = i <= 0;
+    $("#nextBtn").disabled = i < 0 || i >= ui.view.length - 1;
+    $("#drawerBody").scrollTop = 0;
+  }
+  function closeDrawer() {
+    ui.openId = null;
+    $("#drawer").classList.remove("open");
+    $("#drawer").setAttribute("aria-hidden", "true");
+    $("#scrim").classList.remove("open");
+  }
+  function step(d) {
+    const i = ui.view.findIndex(x => x.id === ui.openId);
+    const n = ui.view[i + d];
+    if (n) openDrawer(n.id);
+  }
+
+  // ---------- Form buat / edit skrip ----------
+  const form = { jenis: "VIDEO", editId: null };
+
+  function nextNo(brand, jenis) {
+    return records.filter(r => r.brand === brand && r.jenis === jenis).reduce((m, r) => Math.max(m, r.no), 0) + 1;
+  }
+
+  function renderTplFields(existing) {
+    const tpl = TEMPLATES[form.jenis];
+    const rows = (existing && existing.rows) || [];
+    const get = (label, k) => (rows.find(x => x.label.replace(/\s+$/, "") === label) || {})[k] || "";
+    $("#tplHint").textContent = `Format mengikuti sheet ${JENIS[form.jenis].sheet}.`;
+    $("#tplFields").innerHTML = tpl.rows.map(([label, hint], i) => `
+      <div class="tpl-row" data-label="${esc(label)}">
+        <div class="tpl-lab"><b>${esc(label)}</b><span>${esc(hint)}</span></div>
+        <textarea name="text" rows="${i < 4 && form.jenis !== "SINGLE" ? 1 : 3}" placeholder="${esc(hint || label)}">${esc(get(label, "text"))}</textarea>
+        <div class="aux-grid" style="${tpl.aux.length === 1 ? "grid-template-columns:1fr" : ""}">
+          ${tpl.aux.map(([k, l]) => `<textarea name="${k}" rows="1" placeholder="${l}">${esc(get(label, k))}</textarea>`).join("")}
+        </div>
+      </div>`).join("");
+    $("#captionFields").innerHTML = `<div class="${tpl.captions.length > 1 ? "grid-2" : ""}">` + tpl.captions.map(([k, l]) =>
+      `<div class="field"><label>${l}</label><textarea name="${k}" rows="5" placeholder="${l} + hashtag">${esc((existing || {})[k] || "")}</textarea></div>`).join("") + `</div>`;
+  }
+
+  function renderSeg() {
+    $("#jenisSeg").innerHTML = Object.entries(JENIS).map(([k, v]) =>
+      `<button type="button" class="${form.jenis === k ? "on" : ""}" data-j="${k}" ${form.editId ? "disabled" : ""}>${v.label}</button>`).join("");
+  }
+
+  function openForm(editId) {
+    form.editId = editId || null;
+    const r = editId ? records.find(x => x.id === editId) : null;
+    form.jenis = r ? r.jenis : (ui.jenis !== "ALL" ? ui.jenis : "VIDEO");
+    $("#modalTitle").textContent = r ? `Edit Skrip ${r.no}` : "Buat Skrip Konten";
+    $("#saveBtn").textContent = r ? "Simpan perubahan" : "Simpan ke Creative";
+    $("#fBrand").innerHTML = BRANDS.map(b => `<option>${esc(b)}</option>`).join("");
+    $("#fBrand").value = r ? r.brand : (ui.brand !== "ALL" ? ui.brand : "JADIASN");
+    $("#fBrand").disabled = !!r;
+    $("#fInfo").innerHTML = OPTS.info.map(o => `<option>${o}</option>`).join("");
+    $("#fInfo").value = r ? (r.info || "SKRIP READY") : "SKRIP READY";
+    $("#fTgl").value = r ? r.tgl : TODAY;
+    $("#fUsp").value = r ? r.usp : "";
+    renderSeg();
+    $("#fNo").value = r ? r.no : nextNo($("#fBrand").value, form.jenis);
+    renderTplFields(r && r.script);
+    $("#modal").classList.add("open");
+    setTimeout(() => $("#fUsp").focus(), 30);
+  }
+  function closeForm() { $("#modal").classList.remove("open"); }
+
+  function readScript() {
+    const tpl = TEMPLATES[form.jenis];
+    const script = {
+      rows: [...document.querySelectorAll("#tplFields .tpl-row")].map(el => {
+        const row = { label: el.dataset.label, text: el.querySelector('[name="text"]').value.trim() };
+        tpl.aux.forEach(([k]) => row[k] = el.querySelector(`[name="${k}"]`).value.trim());
+        return row;
+      }),
+    };
+    tpl.captions.forEach(([k]) => script[k] = document.querySelector(`#captionFields [name="${k}"]`).value.trim());
+    return script;
+  }
+
+  function submitForm(e) {
+    e.preventDefault();
+    const script = readScript();
+    const base = { tgl: $("#fTgl").value, usp: $("#fUsp").value.trim(), info: $("#fInfo").value, script };
+    if (form.editId) {
+      const r = records.find(x => x.id === form.editId);
+      update(r, base);
+      closeForm();
+      renderAll();
+      openDrawer(r.id);
+      toast(`Skrip ${r.no} diperbarui`);
+      return;
+    }
+    const brand = $("#fBrand").value;
+    const no = nextNo(brand, form.jenis);
+    const r = Object.assign({
+      id: `${brand}-${form.jenis}-${no}-${Date.now().toString(36)}`, brand, jenis: form.jenis, no,
+      talent: "", editor: "", creative: "", link: "", qc: "", uploadTgl: "", uploadJam: "",
+      yt: false, catatan: "", keterangan: "", _created: true,
+    }, base);
+    records.push(r);
+    store.created.push({ ...r });
+    save();
+    closeForm();
+    Object.assign(ui, { brand, jenis: "ALL", stage: "all", q: "", editor: "", sort: "new", page: 1 });
+    $("#search").value = ""; $("#sortSel").value = "new";
+    renderAll();
+    openDrawer(r.id);
+    toast(`Skrip ${no} (${JENIS[r.jenis].label}) masuk ke sheet Creative`);
+  }
+
+  function copyScript() {
+    const r = records.find(x => x.id === ui.openId);
+    if (!r) return;
+    const s = r.script || { rows: [] };
+    const lines = [`SKRIP ${r.no} — ${r.usp}`, ""];
+    s.rows.filter(x => x.text).forEach(x => lines.push(`${x.label}:\n${x.text}\n`));
+    TEMPLATES[r.jenis].captions.forEach(([k, l]) => s[k] && lines.push(`${l}:\n${s[k]}\n`));
+    navigator.clipboard?.writeText(lines.join("\n")).then(() => toast("Skrip disalin"), () => toast("Gagal menyalin"));
+  }
+
+  // ---------- Popover link ----------
+  let linkId = null;
+  function openLink(btn) {
+    linkId = btn.dataset.link;
+    const r = records.find(x => x.id === linkId);
+    const v = r.link || "";
+    $("#linkInput").value = v;
+    $("#linkKind").value = !v ? "" : /drive\.google/.test(v) ? "drive" : /canva/.test(v) ? "canva" : /youtu/.test(v) ? "youtube" : "other";
+    syncLinkOpen();
+    const pop = $("#linkPop");
+    pop.hidden = false;
+    const b = btn.getBoundingClientRect();
+    const w = pop.offsetWidth, h = pop.offsetHeight;
+    pop.style.left = Math.max(16, Math.min(b.left, innerWidth - w - 16)) + "px";
+    pop.style.top = (b.bottom + h + 8 > innerHeight ? Math.max(16, b.top - h - 6) : b.bottom + 6) + "px";
+    $("#linkInput").focus();
+  }
+  function syncLinkOpen() {
+    const v = $("#linkInput").value.trim();
+    const a = $("#linkOpen");
+    a.hidden = !/^https?:\/\//.test(v);
+    a.href = v;
+  }
+  function closeLink() { $("#linkPop").hidden = true; linkId = null; }
+  function saveLink(v) {
+    const r = records.find(x => x.id === linkId);
+    if (r) { update(r, { link: v }); renderStats(); renderTable(); if (ui.openId === r.id) openDrawer(r.id); }
+    closeLink();
+  }
+
+  // ---------- Export ----------
+  function exportCsv() {
+    const cols = [["no", "NO SKRIP"], ["brand", "BRAND"], ["jenis", "JENIS SKRIP"], ["tgl", "TANGGAL DIBUAT"], ["usp", "USP/KEYWORD"],
+      ["info", "INFO SKRIP"], ["talent", "TALENT"], ["editor", "EDITOR"], ["creative", "CREATIVE"], ["link", "LINK"],
+      ["qc", "QC"], ["uploadTgl", "UPLOAD TANGGAL"], ["uploadJam", "UPLOAD JAM"], ["catatan", "CATATAN"], ["keterangan", "KETERANGAN"]];
+    const q = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const lines = [cols.map(c => q(c[1])).join(",")].concat(filtered().map(r => cols.map(([k]) => q(k === "jenis" ? JENIS[r.jenis].label : r[k])).join(",")));
+    const blob = new Blob(["﻿" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `creative-${ui.brand.toLowerCase()}-${TODAY}.csv`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  // ---------- Event ----------
+  $("#brandSel").addEventListener("change", e => { ui.brand = e.target.value; ui.page = 1; ui.editor = ""; renderAll(); });
+  $("#search").addEventListener("input", e => { ui.q = e.target.value; ui.page = 1; renderTable(); });
+  $("#editorFilter").addEventListener("change", e => { ui.editor = e.target.value; ui.page = 1; renderTable(); });
+  $("#sortSel").addEventListener("change", e => { ui.sort = e.target.value; ui.page = 1; renderTable(); });
+  $("#stats").addEventListener("click", e => {
+    const b = e.target.closest("[data-stage]"); if (!b) return;
+    ui.stage = ui.stage === b.dataset.stage ? "all" : b.dataset.stage; ui.page = 1; renderStats(); renderTable();
+  });
+  $("#tabs").addEventListener("click", e => {
+    const b = e.target.closest("[data-jenis]"); if (!b) return;
+    ui.jenis = b.dataset.jenis; ui.page = 1; renderStats(); renderTabs(); renderTable();
+  });
+  $("#pager").addEventListener("click", e => {
+    const b = e.target.closest("[data-page]"); if (!b || b.disabled) return;
+    ui.page = +b.dataset.page; renderTable(); document.querySelector(".table-wrap").scrollTop = 0;
+  });
+  document.querySelector(".table-wrap").addEventListener("click", e => {
+    const o = e.target.closest("[data-open]"); if (o) return openDrawer(o.dataset.open);
+    const l = e.target.closest("[data-link]"); if (l) { e.stopPropagation(); return openLink(l); }
+    if (e.target.closest("[data-new]")) openForm();
+  });
+  document.querySelector(".table-wrap").addEventListener("change", e => {
+    const el = e.target; const id = el.dataset.id; if (!id) return;
+    const r = records.find(x => x.id === id);
+    let v = el.value;
+    if (el.dataset.field === "editor" && v === "__add") {
+      const name = (prompt("Nama editor baru:") || "").trim().toUpperCase();
+      if (!name) { el.value = r.editor || ""; return; }
+      if (!store.editors.includes(name)) store.editors.push(name);
+      v = name;
+    }
+    update(r, { [el.dataset.field]: el.dataset.field === "uploadJam" ? v.trim() : v });
+    renderStats(); renderTabs(); renderEditorFilter(); renderTable();
+    if (ui.openId === id) openDrawer(id);
+  });
+
+  $("#newBtn").addEventListener("click", () => openForm());
+  $("#editBtn").addEventListener("click", () => ui.openId && openForm(ui.openId));
+  $("#drawerBody").addEventListener("click", e => { if (e.target.closest("[data-edit]")) openForm(ui.openId); });
+  $("#copyBtn").addEventListener("click", copyScript);
+  $("#prevBtn").addEventListener("click", () => step(-1));
+  $("#nextBtn").addEventListener("click", () => step(1));
+  $("#drawerClose").addEventListener("click", closeDrawer);
+  $("#scrim").addEventListener("click", closeDrawer);
+
+  $("#form").addEventListener("submit", submitForm);
+  $("#modal").addEventListener("click", e => { if (e.target.closest("[data-close]") || e.target.id === "modal") closeForm(); });
+  $("#jenisSeg").addEventListener("click", e => {
+    const b = e.target.closest("[data-j]"); if (!b || form.editId) return;
+    form.jenis = b.dataset.j; renderSeg(); renderTplFields(null);
+    $("#fNo").value = nextNo($("#fBrand").value, form.jenis);
+  });
+  $("#fBrand").addEventListener("change", () => { $("#fNo").value = nextNo($("#fBrand").value, form.jenis); });
+
+  $("#linkInput").addEventListener("input", syncLinkOpen);
+  $("#linkInput").addEventListener("keydown", e => { if (e.key === "Enter") saveLink(e.target.value.trim()); });
+  $("#linkSave").addEventListener("click", () => saveLink($("#linkInput").value.trim()));
+  $("#linkClear").addEventListener("click", () => saveLink(""));
+  document.addEventListener("click", e => { if (!$("#linkPop").hidden && !e.target.closest("#linkPop") && !e.target.closest("[data-link]")) closeLink(); });
+
+  document.addEventListener("keydown", e => {
+    if (e.key !== "Escape") return;
+    if (!$("#linkPop").hidden) closeLink();
+    else if ($("#modal").classList.contains("open")) closeForm();
+    else closeDrawer();
+  });
+
+  $("#exportBtn").addEventListener("click", exportCsv);
+  $("#themeBtn").addEventListener("click", () => {
+    const root = document.documentElement;
+    const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    root.dataset.theme = dark ? "light" : "dark";
+    try { localStorage.setItem("creaboard.theme", root.dataset.theme); } catch (e) {}
+  });
+  try { const t = localStorage.getItem("creaboard.theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+
+  renderAll();
+})();
+</script>
+</body>
+</html>
