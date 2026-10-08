@@ -9,6 +9,7 @@ services:
     environment:
       PORT: "3000"
       SECURE_COOKIES: "1"
+      TRUST_PROXY: "1"
     ports:
       - "127.0.0.1:3300:3000"
     networks:

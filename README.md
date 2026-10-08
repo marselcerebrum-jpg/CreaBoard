@@ -38,10 +38,11 @@ Untuk mengosongkan data lokal: hentikan server, hapus folder `data/`, lalu jalan
 |---|---|---|
 | `PORT` | `3000` | Port HTTP |
 | `HOST` | `0.0.0.0` | Alamat yang didengarkan (`127.0.0.1` = hanya komputer ini) |
-| `DATABASE_URL` | – | Koneksi Postgres, mis. `postgres://creaboard_app:…@db:5432/postgres`. Kosong = PGlite lokal |
+| `DATABASE_URL` | – | Koneksi Postgres, mis. `postgres://creaboard_app:…@db:5433/postgres`. Kosong = PGlite lokal |
 | `PGLITE_DIR` | `data/pglite` | Lokasi database PGlite (hanya bila `DATABASE_URL` kosong) |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` / `ADMIN_NAME` | `leader` / acak / `Leader` | Akun Leader pertama (hanya saat database kosong) |
 | `SECURE_COOKIES` | – | Isi `1` bila diakses lewat HTTPS |
+| `TRUST_PROXY` | – | Isi `1` bila di belakang nginx (IP asli dari `X-Real-IP` untuk pembatas login) |
 
 ## Deploy di VPS (Docker + Supabase self-hosted)
 

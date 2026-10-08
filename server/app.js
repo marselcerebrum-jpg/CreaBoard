@@ -23,7 +23,9 @@ const CONTENT_COLS = ["title", "app", "type", "created_date", "upload_date", "sc
   "creative_status", "qc_status", "link", "notes", "marketing_user_id", "creative_user_id", "script_ready_at",
   "talent_done_at", "creative_done_at", "link_at", "qc_at"];
 
-export function createApp({ db, publicDir, now = () => new Date(), secureCookies = false }) {
+export function createApp({ db, publicDir, now = () => new Date(), secureCookies = false, trustProxy = false }) {
+  // Di belakang reverse proxy (nginx), IP asli dibaca dari X-Real-IP.
+  const clientIp = (req) => (trustProxy && req.headers["x-real-ip"]) || req.socket.remoteAddress;
   const today = () => jakartaDate(now());
   const nowIso = () => now().toISOString();
   const routes = [];
@@ -80,7 +82,7 @@ export function createApp({ db, publicDir, now = () => new Date(), secureCookies
   // ───────────── auth ─────────────
   route("POST", "/api/login", async ({ body, req, res }) => {
     const username = String(body.username ?? "").trim();
-    const key = `${req.socket.remoteAddress}|${username.toLowerCase()}`;
+    const key = `${clientIp(req)}|${username.toLowerCase()}`;
     if (loginThrottled(key)) fail(429, "Terlalu banyak percobaan. Coba lagi dalam 15 menit.");
     const u = await db.one("select * from users where lower(username) = lower(?)", [username]);
     if (!u || !u.active || !verifyPassword(String(body.password ?? ""), u.password_hash)) {
