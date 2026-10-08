@@ -39,29 +39,37 @@ function showPassword() {
 
 // ───────────── dropdown ─────────────
 const KEYS = { app: "Apps", talentName: "Talent", script: "Info skrip", talent: "Status Take", creative: "Creative", qc: "QC" };
-const SEMANTIC_CHOICES = { script: ["Draft", "Ready"], talent: ["Belum", "Done", "Tidak perlu"], creative: ["Belum", "Done"], qc: ["", "Done", "Revisi"] };
+// Kolom yang punya kategori proses (dipakai alur & dashboard). Apps/Talent hanya nama.
+const HAS_CATEGORY = new Set(["script", "talent", "creative", "qc"]);
 let optKey = "app";
 let optDraft = [];
 
 function showOptions(key = optKey) {
   optKey = key;
-  optDraft = optionsFor(key).map((o) => ({ id: o.id, label: o.label, semantic: o.semantic }));
+  optDraft = optionsFor(key).map((o) => ({ id: o.id, label: o.label, category: o.category ?? o.label }));
   renderOptions();
 }
 function renderOptions() {
-  const sems = SEMANTIC_CHOICES[optKey];
+  const withCategory = HAS_CATEGORY.has(optKey);
+  const names = optDraft.map((o) => o.label.trim()).filter(Boolean);
   openModal(`${head("Atur dropdown")}<div class="modalbody">
     <div class="settings-tabs">${Object.entries(KEYS).map(([k, n]) => `<button class="btn mini ${k === optKey ? "active" : ""}" data-action="opt-tab" data-key="${k}">${n}</button>`).join("")}</div>
-    ${sems ? '<div class="setting-cols"><span>Nama pilihan</span><span>Kategori proses</span></div>' : ""}
-    <div>${optDraft.map((o, i) => `<div class="settingrow"><input aria-label="Nama pilihan ${i + 1}" data-opt-label="${i}" value="${esc(o.label)}" maxlength="60">
-      ${sems ? `<select aria-label="Kategori ${i + 1}" data-opt-sem="${i}">${sems.map((s) => `<option value="${s}" ${s === o.semantic ? "selected" : ""}>${s || "Belum QC"}</option>`).join("")}</select>` : ""}
+    ${withCategory ? '<div class="setting-cols"><span>Nama pilihan</span><span>Kategori proses</span></div>' : ""}
+    <div>${optDraft.map((o, i) => `<div class="settingrow"><input aria-label="Nama pilihan ${i + 1}" data-opt-label="${i}" data-onchange="opt-rename" value="${esc(o.label)}" maxlength="60">
+      ${withCategory ? `<select aria-label="Kategori ${i + 1}" data-opt-cat="${i}">${names.map((n) => `<option value="${esc(n)}" ${n === o.category ? "selected" : ""}>${esc(n)}</option>`).join("")}</select>` : ""}
       <button class="btn mini" data-action="opt-remove" data-index="${i}">Hapus</button></div>`).join("")}</div>
     <button class="btn mini" style="margin-top:14px" data-action="opt-add">＋ Tambah pilihan</button></div>
     <div class="foot">${back}<button class="btn primary" data-action="opt-save">Simpan dropdown</button></div>`);
 }
 function captureOptions() {
-  document.querySelectorAll("[data-opt-label]").forEach((el) => (optDraft[Number(el.dataset.optLabel)].label = el.value));
-  document.querySelectorAll("[data-opt-sem]").forEach((el) => (optDraft[Number(el.dataset.optSem)].semantic = el.value));
+  document.querySelectorAll("[data-opt-cat]").forEach((el) => (optDraft[Number(el.dataset.optCat)].category = el.value));
+  document.querySelectorAll("[data-opt-label]").forEach((el) => {
+    const item = optDraft[Number(el.dataset.optLabel)];
+    const next = el.value.trim();
+    // Nama berganti → kategori yang merujuk nama lama ikut berganti.
+    if (next && next !== item.label) optDraft.forEach((o) => o.category === item.label && (o.category = next));
+    item.label = next || item.label;
+  });
 }
 
 // ───────────── akun, role & apps ─────────────
@@ -168,13 +176,16 @@ delegate(document.body, "click", {
   },
   "opt-add": () => {
     captureOptions();
-    const sems = SEMANTIC_CHOICES[optKey];
-    optDraft.push({ label: "Pilihan baru", semantic: sems ? sems[0] : "" });
+    let label = "Pilihan baru";
+    for (let n = 2; optDraft.some((o) => o.label === label); n++) label = `Pilihan baru ${n}`;
+    optDraft.push({ label, category: label });
     renderOptions();
   },
   "opt-remove": (el) => {
     captureOptions();
-    optDraft.splice(Number(el.dataset.index), 1);
+    const [removed] = optDraft.splice(Number(el.dataset.index), 1);
+    // Kategori yang merujuk pilihan yang dihapus kembali ke nama sendiri.
+    optDraft.forEach((o) => o.category === removed.label && (o.category = o.label));
     renderOptions();
   },
   "opt-save": async () => {
@@ -208,6 +219,10 @@ delegate(document.body, "click", {
 
 delegate(document.body, "change", {
   "new-user-scope": () => newUserApps(),
+  "opt-rename": () => {
+    captureOptions();
+    renderOptions();
+  },
   "user-field": async (el) => {
     const field = el.dataset.field;
     const value = field === "active" ? el.value === "1" : el.value;

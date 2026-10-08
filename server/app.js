@@ -457,26 +457,53 @@ export function createApp({ db, publicDir, now = () => new Date(), secureCookies
     const labels = list.map((o) => String(o.label ?? "").trim());
     if (!list.length || labels.some((l) => !l || l.length > 60)) fail(422, "Setiap pilihan perlu nama (maks. 60 karakter)");
     if (new Set(labels.map((l) => l.toLowerCase())).size !== labels.length) fail(422, "Nama pilihan dalam satu kolom harus berbeda");
-    if (allowed[key]) {
-      if (list.some((o) => !allowed[key].includes(o.semantic ?? ""))) fail(422, "Kategori proses tidak valid");
-      const missing = allowed[key].filter((s) => !list.some((o) => (o.semantic ?? "") === s));
-      if (missing.length) fail(422, `Setiap kategori proses perlu minimal satu pilihan: ${missing.map((s) => s || "Belum QC").join(", ")}`);
-    }
     await db.tx(async (q) => {
       const existing = await q.query("select * from options where key = ?", [key]);
+      // Kategori = salah satu nama pilihan di daftar ini. Arti prosesnya (semantic) diturunkan dari
+      // pilihan yang dirujuk; pilihan yang menjadi kategori sendiri memakai artinya sendiri, dan
+      // pilihan baru yang berdiri sendiri dianggap belum selesai.
+      const items = list.map((o, i) => {
+        const found = o.id ? existing.find((e) => e.id === o.id) : null;
+        const category = allowed[key] ? String(o.category ?? (o.semantic !== undefined ? "" : labels[i])).trim() : labels[i];
+        return { o, i, found, label: labels[i], category };
+      });
+      if (allowed[key]) {
+        const ownSemantic = (it) => {
+          if (it.o.category === undefined && it.o.semantic !== undefined) return it.o.semantic ?? ""; // klien lama
+          if (it.found && (it.found.category ?? it.found.label) === it.found.label) return it.found.semantic;
+          return allowed[key][0];
+        };
+        const resolve = (it, depth = 0) => {
+          if (depth > items.length) fail(422, "Kategori saling merujuk berputar");
+          const ref = items.find((x) => x.label === it.category);
+          if (!ref || ref === it) return ownSemantic(it);
+          return resolve(ref, depth + 1);
+        };
+        for (const it of items) {
+          if (it.o.category === undefined && it.o.semantic !== undefined) {
+            it.category = it.label;
+          } else if (!labels.includes(it.category)) {
+            fail(422, `Kategori "${it.category || "(kosong)"}" harus salah satu nama pilihan`);
+          }
+        }
+        for (const it of items) it.semantic = resolve(it);
+        if (items.some((it) => !allowed[key].includes(it.semantic))) fail(422, "Kategori proses tidak valid");
+        const missing = allowed[key].filter((sem) => !items.some((it) => it.semantic === sem));
+        if (missing.length) fail(422, `Perlu minimal satu pilihan untuk: ${missing.map((m) => ({ "": "Belum QC", Ready: "skrip siap", Done: "selesai", Revisi: "revisi", Draft: "draft", Belum: "belum", "Tidak perlu": "tidak perlu" })[m] ?? m).join(", ")}`);
+      } else {
+        for (const it of items) it.semantic = "";
+      }
       const keep = new Set();
-      for (const [i, o] of list.entries()) {
-        const found = o.id && existing.find((e) => e.id === o.id);
-        const semantic = allowed[key] ? o.semantic ?? "" : "";
-        if (found) {
-          // Mengubah kategori proses pilihan yang sudah dipakai akan mengubah arti data lama; larang.
-          const used = await q.one("select 1 from contents where ? in (app, script_status, talent_status, talent_name, creative_status, qc_status) limit 1", [found.id]);
-          if (used && found.semantic !== semantic) fail(422, `Kategori "${found.label}" sudah dipakai konten; buat pilihan baru sebagai gantinya`);
-          await q.run("update options set label = ?, semantic = ?, sort = ?, archived = 0 where id = ?", [labels[i], semantic, i, found.id]);
-          keep.add(found.id);
+      for (const it of items) {
+        if (it.found) {
+          // Mengubah arti proses pilihan yang sudah dipakai konten akan mengubah arti data lama; larang.
+          const used = await q.one("select 1 from contents where ? in (app, script_status, talent_status, talent_name, creative_status, qc_status) limit 1", [it.found.id]);
+          if (used && it.found.semantic !== it.semantic) fail(422, `"${it.found.label}" sudah dipakai konten; arti prosesnya tidak bisa diubah. Buat pilihan baru sebagai gantinya`);
+          await q.run("update options set label = ?, semantic = ?, sort = ?, archived = 0, category = ? where id = ?", [it.label, it.semantic, it.i, it.category, it.found.id]);
+          keep.add(it.found.id);
         } else {
-          const id = `${key}:${Date.now().toString(36)}${i}`;
-          await q.run("insert into options (id, key, label, semantic, sort) values (?, ?, ?, ?, ?)", [id, key, labels[i], semantic, i]);
+          const id = `${key}:${Date.now().toString(36)}${it.i}`;
+          await q.run("insert into options (id, key, label, semantic, sort, category) values (?, ?, ?, ?, ?, ?)", [id, key, it.label, it.semantic, it.i, it.category]);
           keep.add(id);
         }
       }

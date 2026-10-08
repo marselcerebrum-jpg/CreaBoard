@@ -369,3 +369,26 @@ test("hak akses staff: Marketing per apps (konten & kalender), Creative hanya dr
   assert.ok(!seen.editable.includes("notes") && !seen.editable.includes("sheet") && seen.editable.includes("qc_status"));
   assert.equal((await dimas.call("PATCH", `/api/contents/${c.id}`, { revision: seen.revision, changes: { notes: "x" } })).status, 403);
 });
+
+test("kategori dropdown = salah satu nama pilihan; arti proses mengikuti pilihan yang dirujuk", async () => {
+  const lm = await login("leader");
+  const cur = O.filter((o) => o.key === "script" && !o.archived);
+  const draft = cur.find((o) => o.semantic === "Draft");
+  const ready = cur.find((o) => o.semantic === "Ready");
+  const base = [{ id: draft.id, label: draft.label, category: draft.label }, { id: ready.id, label: ready.label, category: ready.label }];
+  // Kategori harus nama yang ada di daftar.
+  assert.equal((await lm.call("PUT", "/api/options/script", { options: [...base, { label: "Urgent", category: "Tidak ada" }] })).status, 422);
+  // Urgent berdiri sendiri → dianggap belum siap (Draft).
+  let rows = (await lm.call("PUT", "/api/options/script", { options: [...base, { label: "Urgent", category: "Urgent" }] })).data;
+  let urgent = rows.find((o) => o.key === "script" && o.label === "Urgent");
+  assert.equal(urgent.category, "Urgent");
+  assert.equal(urgent.semantic, "Draft");
+  // Urgent dikategorikan sebagai pilihan siap → ikut dihitung siap.
+  rows = (await lm.call("PUT", "/api/options/script", { options: [...base, { id: urgent.id, label: "Urgent", category: ready.label }] })).data;
+  urgent = rows.find((o) => o.id === urgent.id);
+  assert.equal(urgent.semantic, "Ready");
+  assert.equal(urgent.category, ready.label);
+  // Harus tetap ada pilihan yang berarti siap.
+  const noReady = [{ id: draft.id, label: draft.label, category: draft.label }, { id: ready.id, label: ready.label, category: draft.label }];
+  assert.equal((await lm.call("PUT", "/api/options/script", { options: noReady })).status, 422);
+});
