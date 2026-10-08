@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Content Studio</title>
+  <meta name="description" content="Workspace Marketing & Creative">
+  <meta name="theme-color" content="#344E41">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/js/main.js"></script>
+</head>
+<body>
+  <div id="loginView" class="login hidden">
+    <form id="loginForm" class="login-card">
+      <div class="brand"><span class="logo">c.</span>content studio</div>
+      <div class="field"><label for="loginUser">Username</label><input id="loginUser" autocomplete="username" required></div>
+      <div class="field"><label for="loginPass">Password</label><input id="loginPass" type="password" autocomplete="current-password" required></div>
+      <p id="loginError" class="form-error hidden" role="alert"></p>
+      <button class="btn primary" type="submit">Masuk</button>
+    </form>
+  </div>
+
+  <div id="appView" class="hidden">
+    <aside>
+      <div class="aside-top">
+        <div class="brand"><span class="logo">c.</span>content studio</div>
+        <div class="aside-tools">
+          <button class="settings-btn" id="settingsBtn" data-action="settings" aria-label="Setting">Setting</button>
+          <button class="logout-btn" id="logoutBtn" data-action="logout" aria-label="Keluar">Keluar</button>
+        </div>
+      </div>
+      <div class="account" id="account"></div>
+      <nav class="nav" id="nav" aria-label="Navigasi utama"></nav>
+    </aside>
+    <main>
+      <header>
+        <h1 id="pageTitle"></h1>
+        <button id="createButton" class="btn primary hidden" data-action="create">Buat konten</button>
+      </header>
+      <div id="page"></div>
+    </main>
+  </div>
+
+  <div id="overlay" class="overlay hidden"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" id="modal"></div></div>
+  <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

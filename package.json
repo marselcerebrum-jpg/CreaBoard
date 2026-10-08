@@ -1,0 +1,13 @@
+{
+  "name": "content-studio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Content Studio — workspace Marketing & Creative (server Node.js + SQLite)",
+  "type": "module",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server/index.js",
+    "demo": "node --disable-warning=ExperimentalWarning scripts/seed-demo.js",
+    "test": "node --disable-warning=ExperimentalWarning --test tests/*.test.js"
+  }
+}
