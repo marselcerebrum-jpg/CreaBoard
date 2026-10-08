@@ -1,9 +1,10 @@
-import { test, before, after } from "node:test";
+import { test, before, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { createApp } from "../server/app.js";
 import { hashPassword } from "../server/auth.js";
-import { openDb } from "../server/db.js";
+import { PGlite } from "@electric-sql/pglite";
+import { fromPglite, migrate } from "../server/db.js";
 
 // Jam tetap: 10 Oktober 2026 pukul 10.00 WIB.
 const NOW = new Date("2026-10-10T03:00:00Z");
@@ -11,25 +12,25 @@ const TODAY = "2026-10-10";
 let server, base, db;
 
 before(async () => {
-  db = openDb(":memory:");
+  db = await migrate(fromPglite(await PGlite.create()));
   const add = (username, name, position, role) =>
-    db.prepare("insert into users (username, name, position, role, password_hash) values (?, ?, ?, ?, ?)")
-      .run(username, name, position, role, hashPassword("rahasia123"));
-  add("leader", "Alya", "Leader", "Marketing");
-  add("nadia", "Nadia", "Staff", "Marketing");
-  add("raka", "Raka", "Staff", "Marketing");
-  add("dimas", "Dimas", "Staff", "Creative");
-  add("sinta", "Sinta", "Staff", "Creative");
-  add("putri", "Talent 1", "Staff", "Talent");
-  add("bima", "Bima", "Leader", "Creative");
+    db.run("insert into users (username, name, position, role, password_hash) values (?, ?, ?, ?, ?)",
+      [username, name, position, role, hashPassword("rahasia123")]);
+  await add("leader", "Alya", "Leader", "Marketing");
+  await add("nadia", "Nadia", "Staff", "Marketing");
+  await add("raka", "Raka", "Staff", "Marketing");
+  await add("dimas", "Dimas", "Staff", "Creative");
+  await add("sinta", "Sinta", "Staff", "Creative");
+  await add("putri", "Talent 1", "Staff", "Talent");
+  await add("bima", "Bima", "Leader", "Creative");
   // Staff Marketing hanya membuat konten untuk apps yang dipegang.
-  const appIds = db.prepare("select id from options where key='app' order by sort").all().map((r) => r.id);
-  const give = (username, ids) => {
-    const uid = db.prepare("select id from users where username = ?").get(username).id;
-    for (const app of ids) db.prepare("insert into user_apps (user_id, app) values (?, ?)").run(uid, app);
+  const appIds = (await db.query("select id from options where key='app' order by sort")).map((r) => r.id);
+  const give = async (username, ids) => {
+    const uid = (await db.one("select id from users where username = ?", [username])).id;
+    for (const app of ids) await db.run("insert into user_apps (user_id, app) values (?, ?)", [uid, app]);
   };
-  give("nadia", [appIds[0], appIds[1]]);
-  give("raka", [appIds[2]]);
+  await give("nadia", [appIds[0], appIds[1]]);
+  await give("raka", [appIds[2]]);
   server = createApp({ db, publicDir: join(import.meta.dirname, "..", "public"), now: () => NOW });
   await new Promise((r) => server.listen(0, r));
   base = `http://localhost:${server.address().port}`;
@@ -48,11 +49,16 @@ async function login(username) {
     });
     return { status: r.status, data: await r.json() };
   };
-  return { call, id: db.prepare("select id from users where username = ?").get(username).id };
+  return { call, id: (await db.one("select id from users where username = ?", [username])).id };
 }
 
-const opt = (key, semantic) => db.prepare("select id from options where key = ? and semantic = ? order by sort").get(key, semantic).id;
-const app1 = () => db.prepare("select id from options where key = 'app' order by sort").get().id;
+// Cache pilihan dropdown, diperbarui sebelum setiap tes (urutan sama: key, sort).
+let O = [];
+beforeEach(async () => {
+  O = await db.query("select * from options order by key, sort");
+});
+const opt = (key, semantic) => O.find((o) => o.key === key && o.semantic === semantic).id;
+const app1 = () => O.find((o) => o.key === "app").id;
 const videoSheet = (over = {}) => ({
   type: "Video",
   meta: ["Tips SKD 30 hari", "Inframe", "", "Zoom in"],
@@ -104,7 +110,7 @@ test("alur lengkap: urutan status dijaga dan QC lama batal saat hasil berubah", 
   const leader = await login("leader");
   const cr = await login("dimas");
   const talent = await login("putri");
-  let c = await makeVideo(mk, { talent_name: db.prepare("select id from options where key='talentName' and label='Talent 1'").get().id });
+  let c = await makeVideo(mk, { talent_name: O.find((o) => o.key === "talentName" && o.label === "Talent 1").id });
   c = (await patch(mk, c, { script_status: opt("script", "Ready"), creative_user_id: cr.id })).data;
   assert.ok(c.script_ready_at);
 
@@ -194,7 +200,7 @@ test("Terlewat hanya untuk yang belum tayang; konten selesai tidak dihitung", as
   const mk = await login("nadia");
   const old = await makeVideo(mk, { created_date: "2026-10-01", upload_date: "2026-10-05" });
   assert.equal(old.flags.missed, true);
-  db.prepare("update contents set published_date = '2026-10-05', published_url = 'https://x.com/1' where id = ?").run(old.id);
+  await db.run("update contents set published_date = '2026-10-05', published_url = 'https://x.com/1' where id = ?", [old.id]);
   const after = (await mk.call("GET", `/api/contents/${old.id}`)).data;
   assert.equal(after.flags.missed, false);
   assert.equal(after.flags.published, true);
@@ -238,14 +244,14 @@ test("performa: tepat waktu H-3 untuk Marketing dan target yang belum dibuat dih
 
 test("dropdown: kategori pilihan yang sudah dipakai tidak bisa diubah; pilihan dihapus diarsipkan", async () => {
   const leader = await login("leader");
-  const rows = db.prepare("select * from options where key = 'script' order by sort").all();
+  const rows = (await db.query("select * from options where key = 'script' order by sort"));
   const bad = await leader.call("PUT", "/api/options/script", { options: [{ id: rows[0].id, label: "Draft", semantic: "Ready" }, { id: rows[1].id, label: "Siap", semantic: "Ready" }] });
   assert.equal(bad.status, 422);
   const ok = await leader.call("PUT", "/api/options/script", { options: [{ id: rows[0].id, label: "Draft", semantic: "Draft" }, { id: rows[1].id, label: "Siap shooting", semantic: "Ready" }] });
   assert.equal(ok.status, 200);
-  const apps = db.prepare("select * from options where key = 'app' order by sort").all();
+  const apps = (await db.query("select * from options where key = 'app' order by sort"));
   await leader.call("PUT", "/api/options/app", { options: apps.slice(1).map((o) => ({ id: o.id, label: o.label })) });
-  assert.equal(db.prepare("select archived from options where id = ?").get(apps[0].id).archived, 1);
+  assert.equal((await db.one("select archived from options where id = ?", [apps[0].id])).archived, 1);
   assert.equal((await leader.call("PUT", "/api/options/qc", { options: [{ label: "Done", semantic: "Done" }] })).status, 422);
 });
 
@@ -266,7 +272,7 @@ test("semua peran dapat mengubah dropdown tabel pada konten yang terlihat", asyn
   // Creative mengubah status take dan editor; Marketing mengubah status creative kembali.
   c = (await patch(cr, c, { talent_status: opt("talent", "Done") })).data;
   assert.equal(c.talent_status, opt("talent", "Done"));
-  const r = await patch(cr, c, { app: db.prepare("select id from options where key='app' and archived=0 order by sort desc").get().id });
+  const r = await patch(cr, c, { app: (await db.one("select id from options where key='app' and archived=0 order by sort desc")).id });
   assert.equal(r.status, 200);
   assert.ok(r.data.editable.includes("qc_status"));
 });
@@ -307,7 +313,7 @@ test("pembagian apps: hanya tim Marketing, diatur Leader Marketing", async () =>
   const nadia = await login("nadia");
   const raka = await login("raka");
   const sinta = await login("sinta");
-  const apps = db.prepare("select id from options where key='app' and archived=0 order by sort").all().map((r) => r.id);
+  const apps = (await db.query("select id from options where key='app' and archived=0 order by sort")).map((r) => r.id);
   const [a1, a2] = [apps[0], apps[1]];
   // Leader Creative tidak mengatur apps; staff Creative tidak bisa diberi apps.
   assert.equal((await lc.call("PUT", `/api/users/${raka.id}/apps`, { apps: [a2] })).status, 403);
@@ -328,14 +334,14 @@ test("pembagian apps: hanya tim Marketing, diatur Leader Marketing", async () =>
 
 test("apps langsung ditentukan saat membuat akun", async () => {
   const lm = await login("leader");
-  const app = db.prepare("select id from options where key='app' and archived=0 order by sort").get().id;
+  const app = (await db.one("select id from options where key='app' and archived=0 order by sort")).id;
   const ok = await lm.call("POST", "/api/users", { username: "mira", name: "Mira", position: "Staff", role: "Marketing", password: "12345678", apps: [app] });
   assert.equal(ok.status, 200);
   assert.deepEqual(ok.data.apps, [app]);
   // Leader Marketing tidak mengatur apps staff Creative.
   const bad = await lm.call("POST", "/api/users", { username: "cici", name: "Cici", position: "Staff", role: "Creative", password: "12345678", apps: [app] });
   assert.equal(bad.status, 422);
-  assert.equal(db.prepare("select count(*) n from users where username = 'cici'").get().n, 0);
+  assert.equal((await db.one("select count(*)::int n from users where username = 'cici'")).n, 0);
 });
 
 test("hak akses staff: Marketing per apps (konten & kalender), Creative hanya dropdown", async () => {
@@ -343,11 +349,11 @@ test("hak akses staff: Marketing per apps (konten & kalender), Creative hanya dr
   const lc = await login("bima");
   const nadia = await login("nadia");
   const dimas = await login("dimas");
-  const apps = db.prepare("select id from options where key='app' and archived=0 order by sort").all().map((r) => r.id);
+  const apps = (await db.query("select id from options where key='app' and archived=0 order by sort")).map((r) => r.id);
   const own = apps[5];
   const other = apps[6];
   // Staff Marketing tanpa apps belum bisa membuat konten; setelah diberi apps hanya untuk apps-nya.
-  db.prepare("delete from user_apps where user_id = ?").run(nadia.id);
+  await db.run("delete from user_apps where user_id = ?", [nadia.id]);
   assert.equal((await nadia.call("POST", "/api/contents", { type: "Video", app: own, sheet: videoSheet() })).status, 422);
   await lm.call("PUT", `/api/users/${nadia.id}/apps`, { apps: [own] });
   assert.equal((await nadia.call("POST", "/api/contents", { type: "Video", app: own, sheet: videoSheet() })).status, 200);

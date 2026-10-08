@@ -25,31 +25,30 @@ export function validatePassword(password) {
 
 const sha = (s) => createHash("sha256").update(s).digest("hex");
 
-export function createSession(db, userId) {
+export async function createSession(db, userId) {
   const token = randomBytes(32).toString("base64url");
   const expires = new Date(Date.now() + SESSION_DAYS * 864e5).toISOString();
-  db.prepare("delete from sessions where expires_at < ?").run(new Date().toISOString());
-  db.prepare("insert into sessions (token_hash, user_id, expires_at) values (?, ?, ?)").run(sha(token), userId, expires);
+  await db.run("delete from sessions where expires_at < ?", [new Date().toISOString()]);
+  await db.run("insert into sessions (token_hash, user_id, expires_at) values (?, ?, ?)", [sha(token), userId, expires]);
   return { token, maxAge: SESSION_DAYS * 86400 };
 }
 
-export function sessionUser(db, token) {
+export async function sessionUser(db, token) {
   if (!token) return null;
-  const row = db
-    .prepare(
-      `select u.id, u.username, u.name, u.position, u.role, u.active from sessions s
-       join users u on u.id = s.user_id where s.token_hash = ? and s.expires_at > ?`,
-    )
-    .get(sha(token), new Date().toISOString());
+  const row = await db.one(
+    `select u.id, u.username, u.name, u.position, u.role, u.active from sessions s
+     join users u on u.id = s.user_id where s.token_hash = ? and s.expires_at > ?`,
+    [sha(token), new Date().toISOString()],
+  );
   return row && row.active ? { ...row } : null;
 }
 
-export function destroySession(db, token) {
-  if (token) db.prepare("delete from sessions where token_hash = ?").run(sha(token));
+export async function destroySession(db, token) {
+  if (token) await db.run("delete from sessions where token_hash = ?", [sha(token)]);
 }
 
-export function destroyUserSessions(db, userId) {
-  db.prepare("delete from sessions where user_id = ?").run(userId);
+export async function destroyUserSessions(db, userId) {
+  await db.run("delete from sessions where user_id = ?", [userId]);
 }
 
 // Pembatas percobaan login sederhana per IP+username (in-memory).

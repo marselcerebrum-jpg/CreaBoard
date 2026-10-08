@@ -1,0 +1,20 @@
+# Deploy di VPS: memakai Postgres dari stack Supabase "supabase-content" (jaringan Docker yang sama).
+# Isi .env (lihat .env.example), lalu: docker compose up -d --build
+services:
+  creaboard:
+    build: .
+    container_name: creaboard
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: "3000"
+      SECURE_COOKIES: "1"
+    ports:
+      - "127.0.0.1:3300:3000"
+    networks:
+      - supabase-content
+
+networks:
+  supabase-content:
+    name: supabase-content_default
+    external: true

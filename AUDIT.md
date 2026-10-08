@@ -2,7 +2,7 @@
 
 Tanggal audit: 7 Oktober 2026 · Objek: prototipe satu file `Content_Studio.html` (± 60 KB, HTML + CSS + JS inline, data di `localStorage`).
 
-Hasil akhir: prototipe dibangun ulang menjadi aplikasi tim **Content Studio** (server Node.js + SQLite) di folder ini. Fitur dan tampilan dipertahankan; temuan di bawah diperbaiki.
+Hasil akhir: prototipe dibangun ulang menjadi aplikasi tim **Content Studio** (server Node.js + PostgreSQL) di folder ini. Fitur dan tampilan dipertahankan; temuan di bawah diperbaiki.
 
 ## Ringkasan
 

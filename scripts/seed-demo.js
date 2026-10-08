@@ -1,16 +1,16 @@
 // Mengisi database dengan akun & konten contoh lewat API asli (aturan workflow tetap berlaku).
-//   npm run demo            → data/studio.db (hanya bila belum ada konten)
-//   DB_PATH=... npm run demo
+//   npm run demo                       → PGlite lokal di data/pglite (hanya bila belum ada konten)
+//   DATABASE_URL=postgres://… npm run demo → Postgres/Supabase
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createApp } from "../server/app.js";
 import { hashPassword } from "../server/auth.js";
-import { openDb } from "../server/db.js";
+import { connect } from "../server/index.js";
 import { addDays, jakartaDate } from "../server/rules.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const db = openDb(process.env.DB_PATH ?? join(root, "data", "studio.db"));
-if (db.prepare("select count(*) n from contents").get().n > 0) {
+const { db, close } = await connect();
+if ((await db.one("select count(*)::int n from contents")).n > 0) {
   console.log("Database sudah berisi konten — demo tidak dimuat ulang.");
   process.exit(0);
 }
@@ -21,9 +21,9 @@ const people = [
   ["dimas", "Dimas", "Staff", "Creative"], ["sinta", "Sinta", "Staff", "Creative"], ["putri", "Putri", "Staff", "Talent"],
 ];
 for (const [username, name, position, role] of people) {
-  const exists = db.prepare("select id from users where username = ?").get(username);
-  if (exists) db.prepare("update users set name = ?, position = ?, role = ?, password_hash = ?, active = 1 where id = ?").run(name, position, role, hashPassword(PASSWORD), exists.id);
-  else db.prepare("insert into users (username, name, position, role, password_hash) values (?, ?, ?, ?, ?)").run(username, name, position, role, hashPassword(PASSWORD));
+  const exists = await db.one("select id from users where lower(username) = lower(?)", [username]);
+  if (exists) await db.run("update users set name = ?, position = ?, role = ?, password_hash = ?, active = 1 where id = ?", [name, position, role, hashPassword(PASSWORD), exists.id]);
+  else await db.run("insert into users (username, name, position, role, password_hash) values (?, ?, ?, ?, ?)", [username, name, position, role, hashPassword(PASSWORD)]);
 }
 
 const server = createApp({ db, publicDir: join(root, "public") });
@@ -32,7 +32,7 @@ const base = `http://127.0.0.1:${server.address().port}`;
 async function as(username) {
   const res = await fetch(`${base}/api/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, password: PASSWORD }) });
   const cookie = res.headers.get("set-cookie").split(";")[0];
-  const id = db.prepare("select id from users where username = ?").get(username).id;
+  const { id } = await db.one("select id from users where lower(username) = lower(?)", [username]);
   const call = async (method, path, body) => {
     const r = await fetch(base + path, { method, headers: { "Content-Type": "application/json", cookie }, body: body && JSON.stringify(body) });
     const data = await r.json();
@@ -51,20 +51,21 @@ const sinta = await as("sinta");
 const putri = await as("putri");
 
 // Talent sesuai nama akun Talent.
-const talentOpts = db.prepare("select id, label from options where key = 'talentName' order by sort").all();
+const talentOpts = await db.query("select id, label from options where key = 'talentName' order by sort");
 await leader.call("PUT", "/api/options/talentName", { options: [{ id: talentOpts[0].id, label: "Putri" }, { id: talentOpts[1].id, label: "Fajar" }] });
 
 // Pembagian apps (khusus tim Marketing, diatur Leader Marketing).
-const appIdByLabel = (label) => db.prepare("select id from options where key = 'app' and label = ?").get(label).id;
+const O = await db.query("select * from options order by key, sort");
+const appIdByLabel = (label) => O.find((o) => o.key === "app" && o.label === label).id;
 for (const [by, u, labels] of [
   [leader, nadia, ["JadiASN"]], [leader, raka, ["JadiBUMN", "JadiBeasiswa"]],
 ]) {
   await by.call("PUT", `/api/users/${u.id}/apps`, { apps: labels.map(appIdByLabel) });
 }
 
-const opt = (key, semantic) => db.prepare("select id from options where key = ? and semantic = ? and archived = 0 order by sort").get(key, semantic).id;
-const appId = (label) => db.prepare("select id from options where key = 'app' and label = ?").get(label).id;
-const talentPutri = db.prepare("select id from options where key = 'talentName' and label = 'Putri'").get().id;
+const opt = (key, semantic) => O.find((o) => o.key === key && o.semantic === semantic && !o.archived).id;
+const appId = appIdByLabel;
+const talentPutri = O.find((o) => o.key === "talentName" && o.label === "Putri").id;
 const today = jakartaDate();
 const d = (n) => addDays(today, n);
 
@@ -149,12 +150,14 @@ await leader.call("PUT", "/api/calendar/plan", { app: appId("JadiBeasiswa"), typ
 
 // Data demo dibuat sekaligus hari ini; mundurkan waktu selesai agar performa terlihat realistis.
 // (Hanya untuk demo — di pemakaian nyata timestamp dicatat server saat status berubah.)
-db.exec(`
+const day = (expr) => `to_char((${expr})::date, 'YYYY-MM-DD')`;
+await db.exec(`
   update contents set script_ready_at = created_date || 'T03:00:00.000Z' where script_ready_at is not null;
-  update contents set talent_done_at = min(date(created_date, '+1 day'), date(upload_date, '-1 day')) || 'T05:00:00.000Z' where talent_done_at is not null;
-  update contents set creative_done_at = date(upload_date, '-1 day') || 'T07:00:00.000Z', link_at = date(upload_date, '-1 day') || 'T07:00:00.000Z'
-    where creative_done_at is not null and date(upload_date, '-1 day') <= date('now');
-  update contents set script_ready_at = date(upload_date, '-1 day') || 'T03:00:00.000Z' where title = 'Cara menjawab soal numerik';
+  update contents set talent_done_at = least(${day("created_date::date + 1")}, ${day("upload_date::date - 1")}) || 'T05:00:00.000Z' where talent_done_at is not null;
+  update contents set creative_done_at = ${day("upload_date::date - 1")} || 'T07:00:00.000Z', link_at = ${day("upload_date::date - 1")} || 'T07:00:00.000Z'
+    where creative_done_at is not null and ${day("upload_date::date - 1")} <= ${day("now()")};
+  update contents set script_ready_at = ${day("upload_date::date - 1")} || 'T03:00:00.000Z' where title = 'Cara menjawab soal numerik';
 `);
 server.close();
+await close();
 console.log(`Data demo dimuat. Login (password semua: ${PASSWORD}): ${people.map((p) => `${p[0]} (${p[1]} · ${p[2]} ${p[3]})`).join(", ")}`);

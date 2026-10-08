@@ -45,8 +45,8 @@ export const isHttpUrl = (v) => {
 };
 
 // ───────────── opsi dropdown ─────────────
-export function optionIndex(db) {
-  const rows = db.prepare("select * from options order by key, sort").all();
+export async function optionIndex(db) {
+  const rows = await db.query("select * from options order by key, sort");
   const byId = new Map(rows.map((o) => [o.id, o]));
   const sem = (id) => byId.get(id)?.semantic ?? null;
   const firstWith = (key, semantic) =>
@@ -291,9 +291,9 @@ export function contentFlags(c, opts, today) {
 }
 
 // ───────────── performa & KPI ─────────────
-export function performance(db, opts, users, month, today, viewer) {
-  const contents = db.prepare("select * from contents where archived = 0 and substr(upload_date,1,7) = ?").all(month);
-  const kpis = db.prepare("select * from kpis where substr(upload_date,1,7) = ?").all(month);
+export async function performance(db, opts, users, month, today, viewer) {
+  const contents = await db.query("select * from contents where archived = 0 and substr(upload_date,1,7) = ?", [month]);
+  const kpis = await db.query("select * from kpis where substr(upload_date,1,7) = ?", [month]);
   const staff = users.filter((u) => u.position === "Staff" && u.active && (u.role === "Marketing" || u.role === "Creative"));
   // Leader melihat staff timnya sendiri (Leader Marketing → staff Marketing, Leader Creative → staff Creative).
   const visible = staff.filter((u) => (isLeader(viewer) ? u.role === viewer.role : u.id === viewer.id));
@@ -344,10 +344,11 @@ export function performance(db, opts, users, month, today, viewer) {
  * Rencana per (apps, jenis, tanggal pengerjaan). Aktual = konten dengan tanggal pengerjaan itu
  * yang skripnya sudah Ready — definisi yang sama dipakai pengingat target H+3.
  */
-export function actualCounts(db, opts, from, to) {
-  const rows = db
-    .prepare("select app, type, created_date, script_status from contents where archived = 0 and created_date between ? and ?")
-    .all(from, to);
+export async function actualCounts(db, opts, from, to) {
+  const rows = await db.query(
+    "select app, type, created_date, script_status from contents where archived = 0 and created_date between ? and ?",
+    [from, to],
+  );
   const out = {};
   for (const r of rows) {
     if (opts.sem(r.script_status) !== "Ready") continue;

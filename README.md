@@ -2,13 +2,14 @@
 
 Workspace Marketing × Creative: skrip (Video / Carrousel / Singlepost), worksheet produksi, QC, konfirmasi tayang, kalender rencana vs aktual, dan performa & target staff. Dibangun ulang dari prototipe `Content_Studio.html` — lihat [AUDIT.md](AUDIT.md) untuk temuan dan perbaikannya.
 
-- **Server:** Node.js ≥ 22.13, tanpa dependensi npm (HTTP & SQLite bawaan Node).
-- **Data:** satu file SQLite di `data/studio.db`, dipakai bersama seluruh tim.
-- **Akses:** lewat browser di jaringan kantor; bisa di-*install* sebagai aplikasi (PWA) dari Chrome/Edge.
+- **Server:** Node.js ≥ 22.13 (satu dependensi: `pg`).
+- **Data:** PostgreSQL — di produksi memakai Postgres dari Supabase self-hosted (`supabase-content`) di VPS. Untuk pengembangan lokal tanpa `DATABASE_URL`, server memakai PGlite (Postgres in-process) di `data/pglite`.
+- **Akses:** lewat browser; bisa di-*install* sebagai aplikasi (PWA) dari Chrome/Edge. Produksi: https://creaboard.marseltech.cloud
 
 ## Menjalankan
 
 ```bash
+npm install
 npm start
 ```
 
@@ -29,7 +30,7 @@ Ada dua Leader: **Leader Marketing** (skrip, rencana kalender, konfirmasi tayang
 
 **Pembagian apps** (khusus tim Marketing; Setting → Akun, role & apps — bisa dipilih saat membuat akun): Leader Marketing menentukan apps yang dipegang tiap staff Marketing. Staff otomatis melihat semua konten di apps-nya, dan pilihan apps saat membuat skrip, filter, serta kalender dibatasi ke apps tersebut. Creative dan Talent tidak memakai pembagian apps. Demo: Nadia → JadiASN; Raka → JadiBUMN & JadiBeasiswa.
 
-Untuk mengosongkan data: hentikan server, hapus folder `data/`, lalu jalankan lagi.
+Untuk mengosongkan data lokal: hentikan server, hapus folder `data/`, lalu jalankan lagi.
 
 ## Konfigurasi (environment variable)
 
@@ -37,15 +38,30 @@ Untuk mengosongkan data: hentikan server, hapus folder `data/`, lalu jalankan la
 |---|---|---|
 | `PORT` | `3000` | Port HTTP |
 | `HOST` | `0.0.0.0` | Alamat yang didengarkan (`127.0.0.1` = hanya komputer ini) |
-| `DB_PATH` | `data/studio.db` | Lokasi file database |
+| `DATABASE_URL` | – | Koneksi Postgres, mis. `postgres://creaboard_app:…@db:5432/postgres`. Kosong = PGlite lokal |
+| `PGLITE_DIR` | `data/pglite` | Lokasi database PGlite (hanya bila `DATABASE_URL` kosong) |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` / `ADMIN_NAME` | `leader` / acak / `Leader` | Akun Leader pertama (hanya saat database kosong) |
 | `SECURE_COOKIES` | – | Isi `1` bila diakses lewat HTTPS |
 
+## Deploy di VPS (Docker + Supabase self-hosted)
+
+1. Di Postgres `supabase-content`, buat role & schema khusus (sekali):
+   ```sql
+   create role creaboard_app login password '…';
+   grant creaboard_app to postgres;
+   create schema creaboard authorization creaboard_app;
+   alter role creaboard_app set search_path = creaboard;
+   ```
+2. `git clone` repo ke `/opt/creaboard`, salin `.env.example` → `.env` dan isi `DATABASE_URL` serta `ADMIN_PASSWORD`.
+3. `docker compose up -d --build` — container `creaboard` bergabung ke jaringan `supabase-content_default` dan hanya membuka `127.0.0.1:3300`.
+4. Nginx meneruskan `creaboard.marseltech.cloud` → `127.0.0.1:3300`, HTTPS dari Let's Encrypt (certbot).
+
+Update: `cd /opt/creaboard && git pull && docker compose up -d --build`.
+
 ## Operasional
 
-- **Backup:** salin file `data/studio.db` (beserta `studio.db-wal` jika ada) secara berkala, sebaiknya saat server berhenti.
-- **Akses dari luar kantor:** pasang di server/VPS di belakang reverse proxy HTTPS (mis. Caddy/Nginx), lalu set `SECURE_COOKIES=1`.
-- **Menjalankan terus-menerus:** gunakan service manager (mis. NSSM di Windows, systemd di Linux, atau `pm2`).
+- **Backup:** data ada di schema `creaboard` pada Postgres `supabase-content` — ikut backup database Supabase, atau `pg_dump -n creaboard`.
+- **Log:** `docker logs creaboard`.
 
 ## Struktur
 
