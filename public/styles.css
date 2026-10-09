@@ -659,70 +659,61 @@ tr:hover td { background: #FBFBF8; }
 .icon-act.danger { color: var(--danger); }
 .icon-act.danger:hover { border-color: var(--danger-line); background: var(--danger-bg); }
 
-/* ───────────── Create Konten (halaman penuh) ───────────── */
+/* ───────────── Create Konten (halaman penuh, satu tabel) ───────────── */
 .overlay.full { padding: 0; align-items: stretch; }
-.modal.full { max-width: none; max-height: none; height: 100dvh; border-radius: 0; background: var(--bg); }
+.modal.full { max-width: none; max-height: none; height: 100dvh; border-radius: 0; background: #F4F5F0; }
 .ck { min-height: 100%; display: flex; flex-direction: column; }
-.ck-page { flex: 1; width: 100%; max-width: 1550px; padding: 30px 40px 24px; }
-.ck-crumb { font-size: 13px; color: var(--muted); margin-bottom: 18px; }
-.ck-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 22px; border: 0; padding: 0; }
-.ck-head h2 { font-size: 29px; letter-spacing: -1px; margin: 0; color: var(--ink); }
-.ck-head p { margin: 5px 0 0; color: var(--muted); font-size: 14px; }
-.ck-badge { background: #fff; border: 1px solid var(--line); padding: 7px 12px; border-radius: 20px; font-size: 13px; white-space: nowrap; }
-.ck-types { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 22px; }
-.ck-type { display: flex; align-items: center; gap: 13px; text-align: left; border: 1px solid var(--line); border-radius: 13px; padding: 18px; background: #fff; color: var(--ink); }
-.ck-type strong { display: block; font-size: 16px; }
-.ck-type small { display: block; font-size: 13px; color: var(--muted); }
-.ck-type.selected { border: 2px solid var(--pine); padding: 17px; background: var(--ok-bg); }
-.ck-type:disabled:not(.selected) { opacity: .45; cursor: not-allowed; }
-.ck-sym { width: 42px; height: 42px; border-radius: 10px; background: var(--sage-soft); display: grid; place-items: center; color: var(--pine); font-size: 22px; flex-shrink: 0; }
-.ck-type.selected .ck-sym { background: var(--pine); color: #fff; }
-.ck-layout { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 24px; align-items: start; }
-.ck-card { background: #fff; border: 1px solid var(--line); border-radius: 14px; margin-bottom: 20px; overflow: hidden; }
-.ck-cardhead { padding: 18px 24px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; }
-.ck-cardhead h3 { font-size: 17px; margin: 0; color: var(--ink); }
-.ck-num { color: var(--pine); margin-right: 9px; }
-.ck-body { padding: 22px 24px; }
-.ck-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-.ck-grid .full { grid-column: 1 / -1; }
-.ck label, .ck .field label { font-size: 14px; font-weight: 600; color: var(--ink); margin-bottom: 7px; display: block; }
-.ck-blocks { margin-top: 20px; }
-.ck-block { border: 1px solid var(--line); border-radius: 11px; margin-bottom: 16px; overflow: hidden; }
-.ck-btop { background: var(--mist); padding: 11px 16px; display: flex; justify-content: space-between; align-items: center; font-size: 14px; font-weight: 700; }
-.ck-del { border: 0; background: none; color: var(--muted); font-size: 13px; padding: 0; }
-.ck-del:hover { color: var(--danger); }
-.ck-bbody { padding: 16px; display: grid; grid-template-columns: 1.15fr 1fr; gap: 18px; }
-.ck-sub { margin-top: 12px !important; font-size: 13px !important; }
-.ck-add { width: 100%; padding: 11px; border: 1px dashed var(--sage); border-radius: 9px; background: var(--ok-bg); color: var(--pine); font-weight: 700; }
-.ck-add:hover { border-color: var(--pine); }
-.ck-captabs { display: flex; gap: 8px; margin-bottom: 14px; }
-.ck-captabs .btn.active { color: var(--pine); border-color: var(--pine); background: var(--ok-bg); }
-.ck-summary { position: sticky; top: 24px; }
-.ck-summary h3 { margin: 0 0 16px; font-size: 16px; }
-.ck-row { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; padding: 10px 0; border-bottom: 1px solid var(--mist); }
-.ck-row span:first-child { color: var(--muted); }
-.ck-row span:last-child { text-align: right; font-weight: 600; }
-.ck-summary .ready-check { margin: 16px 0 0; font-size: 12px; }
-.ck-note { padding: 14px; background: var(--ok-bg); border-radius: 10px; font-size: 13px; color: var(--ok); margin-top: 16px; }
-.ck-foot { position: sticky; bottom: 0; z-index: 5; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 40px; background: #ffffffee; border-top: 1px solid var(--line); backdrop-filter: blur(10px); }
-.ck-actions { display: flex; gap: 10px; }
+.ck-page { flex: 1; width: 100%; max-width: 1560px; margin: 0 auto; padding: 34px 38px 28px; }
+.ck-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 0 0 20px; margin-bottom: 22px; border-bottom: 1px solid var(--line); }
+.ck-head h2 { font-size: 28px; font-weight: 750; letter-spacing: -.8px; margin: 0; color: var(--ink); }
+.ck-head p { margin: 7px 0 0; color: var(--muted); font-size: 14px; }
+.ck-badge { background: var(--ok-bg); color: var(--pine); padding: 7px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.ck-types { display: inline-flex; gap: 4px; padding: 5px; margin: 0 0 23px; background: var(--sage-soft); border: 1px solid var(--line); border-radius: 12px; }
+.ck-types button { border: 0; border-radius: 8px; padding: 10px 28px; background: transparent; color: var(--ink); font-size: 14px; font-weight: 600; }
+.ck-types button.selected { background: #fff; color: var(--pine); box-shadow: 0 2px 7px #344E4114; }
+.ck-types button:disabled:not(.selected) { opacity: .45; cursor: not-allowed; }
 .ck .draft-banner { margin: 0 0 16px; }
-/* Kotak teks dengan B / I */
-.rbox { border: 1px solid var(--line); border-radius: 9px; background: #fff; overflow: hidden; }
-.rbox:focus-within { border-color: var(--pine); box-shadow: 0 0 0 1px var(--pine); }
-.rbox-tools { display: flex; gap: 4px; padding: 5px 10px; background: #F6F6F2; border-bottom: 1px solid var(--mist); }
-.rbox-tools button { width: 30px; height: 26px; border: 0; border-radius: 6px; background: none; color: var(--ink); font-size: 14px; }
-.rbox-tools button:hover { background: var(--sage-soft); }
-.rbox textarea { border: 0; border-radius: 0; padding: 10px 14px; font-size: 14px; line-height: 1.6; resize: vertical; min-height: 92px; background: #fff; box-shadow: none; }
-.rbox textarea:focus { outline: 0; box-shadow: none; }
-.ed-dir { min-height: 44px; font-size: 13px; }
-/* Footage / ilustrasi: catatan, link (ikon), file */
-.ft2 { display: flex; flex-direction: column; gap: 9px; background: #FAFBF8; padding: 12px; border-radius: 9px; border: 1px solid var(--line); }
-.ft2 textarea { min-height: 70px; font-size: 13px; }
-.ft2-link { display: flex; gap: 6px; }
-.ft2-link input { flex: 1; min-width: 0; font-size: 13px; }
-.ft2-upload { display: block !important; text-align: center; border: 1px dashed var(--sage); background: #fff; color: var(--pine); border-radius: 8px; padding: 10px; font-size: 13px !important; cursor: pointer; margin: 0 !important; }
-.ft2-upload:hover { border-color: var(--pine); }
+/* Informasi konten: satu baris */
+.ck-info.top-fields { display: grid; grid-template-columns: 1fr 1fr 1.7fr 1fr 1.2fr; gap: 18px; margin: 0 0 24px; padding: 22px; background: #fff; border: 1px solid var(--line); border-radius: 13px; box-shadow: 0 3px 14px #344E4105; }
+.ck-info label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 7px; }
+.ck-info input, .ck-info select { min-height: 43px; background: #FAFBF8; border-color: var(--line); border-radius: 8px; }
+.ck-info input:focus, .ck-info select:focus { background: #fff; border-color: var(--fern); }
+/* Tabel skrip */
+.ck-tablewrap { overflow: auto; background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 5px 20px #344E4106; }
+.ck-table { width: 100%; min-width: 1000px; table-layout: fixed; border-collapse: collapse; border-style: hidden; background: #fff; }
+.ck-table th, .ck-table td { position: static; border: 1px solid var(--mist); padding: 14px; vertical-align: top; background: #fff; }
+.ck-table th { height: 45px; padding: 14px 12px; text-align: center; font-size: 13px; font-weight: 600; letter-spacing: .4px; color: var(--forest); background: var(--sage); border-color: #B7C2A2; }
+.ck-Carousel .ck-table th { background: #BCC9A9; }
+.ck-Singlepost .ck-table th { background: var(--stone); }
+.ck-table td.part { text-align: center; vertical-align: middle; font-size: 12px; font-weight: 700; letter-spacing: .2px; line-height: 1.6; color: var(--pine); background: #F7F8F4; }
+.ck-table .tableintro td { padding-top: 10px; padding-bottom: 10px; }
+.ck-table .captioncell { background: #FCFDFB; }
+/* Kotak teks di tabel: tanpa bingkai, tombol B / I muncul saat aktif */
+.rt { position: relative; }
+.rt textarea { width: 100%; min-height: 135px; padding: 7px; border: 0; border-radius: 6px; background: transparent; font-size: 14px; line-height: 1.7; resize: vertical; box-shadow: none; transition: background .15s; }
+.rt textarea:hover { background: #FAFBF8; }
+.rt textarea:focus { background: #F4F7EF; outline: 2px solid var(--sage); outline-offset: 0; }
+.rt textarea::placeholder { color: #A3AA9C; font-size: 13px; }
+.tableintro .rt textarea { min-height: 43px; }
+.captioncell .rt textarea { min-height: 680px; }
+.rt-tools { position: absolute; top: -12px; right: 4px; z-index: 2; display: none; gap: 2px; padding: 2px; background: #fff; border: 1px solid var(--line); border-radius: 7px; box-shadow: 0 2px 8px #344E411A; }
+.rt:focus-within .rt-tools { display: flex; }
+.rt-tools button { width: 26px; height: 22px; border: 0; border-radius: 5px; background: none; color: var(--ink); font-size: 13px; }
+.rt-tools button:hover { background: var(--sage-soft); }
+.ck-add { width: 100%; margin-top: 14px; padding: 13px; border: 1px dashed var(--sage); border-radius: 9px; background: #F7F9F3; color: var(--pine); font-weight: 600; }
+.ck-add:hover { background: var(--ok-bg); border-color: var(--fern); }
+.ck-foot { position: sticky; bottom: 0; z-index: 5; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 17px 38px; background: #ffffffed; border-top: 1px solid var(--line); box-shadow: 0 -4px 20px #344E4106; backdrop-filter: blur(10px); }
+.ck-foot .small { font-size: 13px; }
+.ck-actions { display: flex; gap: 10px; }
+.ck-actions .btn { padding: 11px 20px; }
+/* Visual (footage / ilustrasi): catatan, link sebagai ikon, file */
+.ft2 { display: flex; flex-direction: column; gap: 8px; }
+.ft2 textarea { min-height: 55px; font-size: 13px; }
+.ck-table .ft2 textarea { border: 0; padding: 7px; background: transparent; }
+.ck-table .ft2 textarea:focus { background: #F4F7EF; outline: 2px solid var(--sage); }
+.ft2 input[data-ft2-link] { font-size: 13px; padding: 9px; background: #FAFBF8; border-color: var(--line); border-radius: 7px; }
+.ft2-upload { display: block !important; text-align: center; padding: 7px; border: 1px dashed var(--sage); border-radius: 7px; background: #F7F9F3; color: var(--pine); font-size: 13px !important; font-weight: 500; cursor: pointer; margin: 0 !important; }
+.ft2-upload:hover { background: var(--ok-bg); border-color: var(--fern); }
 .ft2-links, .dir-links { display: flex; flex-wrap: wrap; gap: 6px; }
 .ft2-links:empty, .dir-links:empty, .ft2-files:empty { display: none; }
 .dir-links { margin-top: 6px; }
@@ -737,31 +728,31 @@ tr:hover td { background: #FBFBF8; }
 .fc-name { flex: 1; min-width: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fc-act { display: grid; place-items: center; width: 28px; height: 28px; border: 0; background: none; color: var(--ink); font-size: 18px; border-radius: 6px; flex-shrink: 0; }
 .fc-act:hover { background: var(--mist); }
+.ck-table .file-chip { flex-wrap: wrap; }
+.ck-table .file-chip .fc-name { flex: 1 1 calc(100% - 44px); white-space: normal; word-break: break-all; }
 /* Tampilan baca: link sebagai ikon, file dengan tombol unduh */
 .link-ico { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px; background: var(--info-bg); border: 1px solid var(--info-line); color: var(--info) !important; font-size: 11px; font-weight: 600; text-decoration: none; vertical-align: middle; white-space: nowrap; }
 .link-ico:hover { text-decoration: underline; }
 .file-line { display: inline-flex; align-items: center; gap: 6px; }
 .file-line a { font-weight: 600; color: var(--pine); }
 .file-line .file-dl { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 5px; border: 1px solid var(--line); }
-@media (max-width: 1150px) {
-  .ck-layout { grid-template-columns: 1fr; }
-  .ck-summary { position: static; order: -1; }
+@media (max-width: 1000px) {
+  .ck-info.top-fields { grid-template-columns: 1fr 1fr; }
+  .ck-info .field:nth-child(3) { grid-column: 1 / -1; }
 }
 @media (max-width: 760px) {
   .overlay.full { inset: 0; }
-  .ck-page { padding: 18px 16px 20px; }
-  .ck-foot { padding: 12px 16px; }
-  .ck-foot .small { max-width: 130px; }
-  .ck-types { gap: 8px; }
-  .ck-type { display: block; padding: 12px; }
-  .ck-type.selected { padding: 11px; }
-  .ck-type small { display: none; }
-  .ck-sym { margin-bottom: 8px; }
-  .ck-grid, .ck-bbody { grid-template-columns: 1fr; }
-  .ck-badge { display: none; }
-  .ck-body { padding: 16px; }
-  .ck-cardhead { padding: 14px 16px; }
+  .ck-page { padding: 20px 14px 20px; }
+  .ck-head { padding-bottom: 15px; }
+  .ck-head p { font-size: 13px; }
   .ck-head h2 { font-size: 25px; }
+  .ck-badge { display: none; }
+  .ck-types { display: flex; }
+  .ck-types button { flex: 1; padding: 10px 12px; }
+  .ck-info.top-fields { padding: 16px; gap: 14px; }
+  .ck-foot { padding: 12px 14px; }
+  .ck-foot .small { max-width: 120px; }
+  .ck-actions .btn { padding: 10px 13px; }
 }
 /* Hasil audit: toast tidak menutupi tombol di bawah jendela; kolom footage detail rapi */
 .overlay:not(.hidden) ~ .toast { bottom: 84px; }
@@ -772,5 +763,3 @@ tr:hover td { background: #FBFBF8; }
 .sheet .file-chip { flex-wrap: wrap; }
 .sheet .file-chip .fc-name { flex: 1 1 calc(100% - 44px); white-space: normal; word-break: break-all; }
 .sheet .ft2-link { flex-wrap: wrap; }
-.ck-body.top-fields { border: 0; border-radius: 0; background: none; box-shadow: none; margin: 0; padding: 22px 24px; }
-@media (max-width: 760px) { .ck-body.top-fields { padding: 16px; } }

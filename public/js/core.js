@@ -218,7 +218,7 @@ export function richText(s) {
 /** Semua teks skrip (judul, brief, caption, catatan) untuk pencarian menyeluruh. */
 export function searchText(c) {
   const s = c.sheet ?? {};
-  const parts = [c.title, c.notes, s.keyword, ...(s.meta ?? []), ...(s.metaFootage ?? []), ...(s.metaEditing ?? []), s.caption1, s.caption2, s.notes];
+  const parts = [c.title, c.notes, s.title, s.keyword, ...(s.meta ?? []), ...(s.metaFootage ?? []), ...(s.metaEditing ?? []), s.caption1, s.caption2, s.notes];
   for (const r of s.rows ?? []) parts.push(r.label, r.text, r.footage, r.direction);
   return parts.filter(Boolean).join(" ").replace(/\*/g, "").toLowerCase();
 }

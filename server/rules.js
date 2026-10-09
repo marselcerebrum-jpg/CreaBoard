@@ -117,7 +117,7 @@ export function editableFields(user, c, opts) {
 export function mergeFootage(sheet, footage) {
   if (!sheet || !footage || typeof footage !== "object") return sheet;
   const next = normalizeSheet(sheet.type, sheet); // sheet lama bisa tanpa metaFootage/rows
-  if (sheet.type === "Video" && Array.isArray(footage.metaFootage)) next.metaFootage = next.metaFootage.map((v, i) => (typeof footage.metaFootage[i] === "string" ? footage.metaFootage[i].slice(0, 20000) : v));
+  if (Array.isArray(footage.metaFootage)) next.metaFootage = next.metaFootage.map((v, i) => (typeof footage.metaFootage[i] === "string" ? footage.metaFootage[i].slice(0, 20000) : v));
   if (Array.isArray(footage.rows)) next.rows = next.rows.map((r, i) => (typeof footage.rows[i] === "string" ? { ...r, footage: footage.rows[i].slice(0, 20000) } : r));
   return next;
 }
@@ -145,11 +145,11 @@ export function normalizeSheet(type, raw) {
     caption2: str(s.caption2),
     notes: str(s.notes),
     keyword: str(s.keyword, 500),
+    title: str(s.title, 200),
+    // Footage per baris meta (Video: kata kunci…visual hook; Singlepost: judul/hook & image).
+    metaFootage: arr(s.metaFootage, metaLen),
   };
-  if (type === "Video") {
-    sheet.metaFootage = arr(s.metaFootage, 4);
-    sheet.metaEditing = arr(s.metaEditing, 4);
-  }
+  if (type === "Video") sheet.metaEditing = arr(s.metaEditing, 4);
   return sheet;
 }
 
@@ -172,7 +172,7 @@ export function scriptReadyErrors(c) {
   const first = rows[0]?.text;
   const last = rows.length > 1 ? rows[rows.length - 1]?.text : "";
   if (c.type === "Video") {
-    if (!filled(s.meta[0])) e.push("Kata kunci wajib diisi");
+    if (!filled(s.title) && !filled(s.meta[0])) e.push("Judul konten wajib diisi");
     if (!filled(first)) e.push("Hook wajib diisi");
     if (!rows.slice(1, -1).some((r) => filled(r.text))) e.push("Minimal satu tahapan isi");
     if (!filled(last)) e.push("CTA wajib diisi");
@@ -192,7 +192,8 @@ export function scriptReadyErrors(c) {
   return e;
 }
 
-export const titleFromSheet = (sheet, fallback = "") => (sheet.meta?.[0] ?? "").trim().split("\n")[0].slice(0, 200) || fallback;
+/** Judul konten: field "Info skrip / judul konten" (sheet.title); skrip lama memakai baris pertama meta. */
+export const titleFromSheet = (sheet, fallback = "") => (sheet.title?.trim() || (sheet.meta?.[0] ?? "").trim()).split("\n")[0].slice(0, 200) || fallback;
 
 // ───────────── validasi transisi ─────────────
 /**
