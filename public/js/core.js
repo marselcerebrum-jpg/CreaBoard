@@ -109,6 +109,7 @@ const ICONS = {
   qc: '<path d="M20 6 9 17l-5-5"/>',
   revision: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
   upload: '<path d="M12 16V4M7 9l5-5 5 5M4 20h16"/>',
+  download: '<path d="M12 4v12M7 11l5 5 5-5M4 20h16"/>',
   late: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   missed: '<path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>',
 };

@@ -11,7 +11,7 @@ import {
 } from "./auth.js";
 import {
   actualCounts, addDays, applyWorkflow, canSee, contentFlags, DEADLINE_DAYS, defaultSheet, editableFields, fail, HttpError,
-  isDate, isHttpUrl, isLeader, jakartaDate, leads, manages, normalizeSheet, optionIndex, performance, PRIORITIES, scriptReadyErrors, titleFromSheet, TYPES,
+  isDate, isHttpUrl, isLeader, jakartaDate, leads, manages, mergeFootage, normalizeSheet, optionIndex, performance, PRIORITIES, scriptReadyErrors, titleFromSheet, TYPES,
 } from "./rules.js";
 import { folderIdFromUrl } from "./drive.js";
 
@@ -208,8 +208,10 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
       const denied = Object.keys(changes).filter((f) => !allowed.includes(f));
       if (denied.length) fail(403, "Kolom ini dikelola oleh peran lain", denied);
 
-      const next = { ...prev, ...changes };
+      const { footage, ...rest } = changes;
+      const next = { ...prev, ...rest };
       if ("sheet" in changes || "type" in changes) next.sheet = normalizeSheet(next.type, changes.sheet ?? prev.sheet);
+      if (footage) next.sheet = mergeFootage(next.sheet, footage);
       if (!TYPES.includes(next.type)) fail(422, "Bentuk konten tidak valid");
       if ("app" in changes && changes.app !== prev.app) checkAppAllowed(user, changes.app);
       next.title = titleFromSheet(next.sheet, prev.title);
@@ -282,6 +284,33 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
        where u.role = 'Marketing' and k.work_date between ? and ?`, [from, to],
     )).map((k) => JSON.stringify([k.app, k.type, k.work_date]));
     return { month, from, to, plans, actuals: await actualCounts(db, await optionIndex(db), from, to), kpiLinked: linked };
+  });
+
+  // Salin rencana bulan ini ke bulan berikutnya (tanggal yang sama). Rencana yang sudah ada tidak ditimpa.
+  route("POST", "/api/calendar/copy-next", async ({ user, body }) => {
+    if (!isLeader(user) && user.role !== "Marketing") fail(403, "Kalender hanya bisa diedit Leader dan staff Marketing");
+    const month = monthOf(body);
+    const [y, m] = month.split("-").map(Number);
+    const nextMonth = new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 7);
+    const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+    const plans = await db.query("select * from calendar_plans where date like ? and amount is not null", [`${month}-%`]);
+    let copied = 0;
+    let skipped = 0;
+    for (const p of plans) {
+      const day = Number(p.date.slice(8));
+      const allowed = isLeader(user) || user.apps.includes(p.app);
+      if (!allowed || day > lastDay) {
+        skipped += allowed ? 1 : 0;
+        continue;
+      }
+      const r = await db.one(
+        "insert into calendar_plans (app, type, date, amount, color) values (?, ?, ?, ?, ?) on conflict (app, type, date) do nothing returning app",
+        [p.app, p.type, `${nextMonth}-${p.date.slice(8)}`, p.amount, p.color],
+      );
+      if (r) copied++;
+      else skipped++;
+    }
+    return { month: nextMonth, copied, skipped };
   });
 
   // Ringkasan H+3: rencana dikurangi skrip Ready dengan tanggal pengerjaan yang sama.
@@ -567,7 +596,7 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
     return { ok: true };
   });
 
-  route("GET", "/api/drive-status", async () => ({ connected: Boolean(drive.enabled) }));
+  route("GET", "/api/drive-status", async () => ({ connected: Boolean(drive.enabled), maxMb: drive.maxBytes ? Math.floor(drive.maxBytes / 1048576) : maxUploadMb }));
 
   route("GET", "/api/footage/:id/file", async ({ params, res, query }) => {
     const f = await db.one("select * from footage where id = ? and kind = 'file'", [Number(params.id) || 0]);

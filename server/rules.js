@@ -74,7 +74,8 @@ export function canSee(user, c, opts) {
 
 // Semua dropdown di tabel boleh diubah siapa pun yang dapat melihat konten (keputusan tim:
 // alur lebih dinamis). Urutan proses tetap dijaga applyWorkflow. Field non-dropdown tetap per peran.
-const DROPDOWN_FIELDS = ["app", "script_status", "talent_name", "talent_status", "creative_user_id", "creative_status", "qc_status"];
+// "footage" = kolom FOOTAGE skrip Video (link footage): boleh diubah/ditambah semua peran.
+const DROPDOWN_FIELDS = ["app", "script_status", "talent_name", "talent_status", "creative_user_id", "creative_status", "qc_status", "footage"];
 const MARKETING_FIELDS = [...DROPDOWN_FIELDS, "type", "created_date", "upload_date", "sheet", "notes", "priority"];
 // Staff Creative hanya mengubah dropdown (+ link hasil, syarat wajib status Creative "Done").
 const CREATIVE_FIELDS = [...DROPDOWN_FIELDS, "link"];
@@ -98,6 +99,21 @@ export function editableFields(user, c, opts) {
 }
 
 // ───────────── skrip (sheet) ─────────────
+/** Ganti hanya kolom FOOTAGE skrip Video: { metaFootage: [4 teks], rows: [teks per baris] }. */
+export function mergeFootage(sheet, footage) {
+  if (sheet?.type !== "Video" || !footage || typeof footage !== "object") return sheet;
+  const next = structuredClone(sheet);
+  if (Array.isArray(footage.metaFootage)) next.metaFootage = next.metaFootage.map((v, i) => (typeof footage.metaFootage[i] === "string" ? footage.metaFootage[i].slice(0, 20000) : v));
+  if (Array.isArray(footage.rows)) next.rows = next.rows.map((r, i) => (typeof footage.rows[i] === "string" ? { ...r, footage: footage.rows[i].slice(0, 20000) } : r));
+  return next;
+}
+/** Isi skrip tanpa kolom footage — perubahan footage saja tidak terkena kunci skrip. */
+const scriptCore = (sheet) => {
+  if (!sheet) return sheet;
+  const { metaFootage, ...rest } = sheet;
+  return { ...rest, rows: (rest.rows ?? []).map(({ footage, ...r }) => r) };
+};
+
 const str = (v, max = 20000) => (typeof v === "string" ? v.slice(0, max) : "");
 
 /** Menormalkan struktur worksheet dari klien; field asing dibuang. */
@@ -201,13 +217,13 @@ export function applyWorkflow(prev, next, opts, now) {
 
   // Konten yang sudah tayang dikunci; Leader Marketing harus membatalkan status tayang dulu.
   if (published) {
-    const locked = ["sheet", "type", "script_status", "talent_status", "creative_status", "qc_status", "link"].filter(
-      (f) => JSON.stringify(prev[f]) !== JSON.stringify(next[f]),
+    const locked = ["sheet", "type", "script_status", "talent_status", "creative_status", "qc_status", "link"].filter((f) =>
+      f === "sheet" ? JSON.stringify(scriptCore(prev.sheet)) !== JSON.stringify(scriptCore(next.sheet)) : JSON.stringify(prev[f]) !== JSON.stringify(next[f]),
     );
     if (locked.length) fail(409, "Konten sudah tayang. Batalkan status tayang dulu untuk mengubah skrip/status.");
   }
 
-  const sheetChanged = JSON.stringify(prev.sheet) !== JSON.stringify(next.sheet) || prev.type !== next.type;
+  const sheetChanged = JSON.stringify(scriptCore(prev.sheet)) !== JSON.stringify(scriptCore(next.sheet)) || prev.type !== next.type;
   if (sheetChanged && was.creative === "Done" && is.creative === "Done") {
     fail(409, "Skrip terkunci karena hasil creative sudah selesai. Ubah status Creative ke Belum dulu bila perlu revisi skrip.");
   }

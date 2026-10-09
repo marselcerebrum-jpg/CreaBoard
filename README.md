@@ -38,7 +38,8 @@ Ada dua Leader: **Leader Marketing** (skrip, rencana kalender, konfirmasi tayang
 - Mengisi QC setelah Link hasil ada otomatis menandai Creative Done.
 - **Pembaruan otomatis** — perubahan dari akun lain langsung tampil tanpa refresh (Server-Sent Events).
 - **Pencarian** mencakup judul dan seluruh isi skrip/brief.
-- **Footage** — skrip Video: tiap baris kolom FOOTAGE punya kolom tempel link dan tombol **Unggah dari komputer**; Carrousel/Singlepost: kotak footage di bawah skrip. File yang diunggah otomatis masuk ke folder Google Drive sesuai Apps × jenis konten (diatur Leader di **Setting → Link footage**), dan link-nya ditulis ke kolom footage. Bila Drive belum terhubung, file disimpan di server.
+- **Konten kalender** — alur bulanan dalam 4 tampilan: **Ringkasan** (total rencana, aktual, selisih, pencapaian + progres per aplikasi), **Rencana Bulanan** (kalender Senin–Minggu per aplikasi & jenis konten, isi rencana harian, tandai warna = edit mandiri), **Aktual** (tabel selisih rencana vs aktual per aplikasi × jenis), **Evaluasi** (grafik per aplikasi, catatan otomatis, salin rencana ke bulan berikutnya, ekspor laporan CSV).
+- **Footage** — skrip Video: tiap baris kolom FOOTAGE punya kolom tempel link dan tombol **Unggah dari komputer**; kolom ini boleh diubah/ditambah semua peran (juga dari detail skrip, tersimpan otomatis); Carrousel/Singlepost: kotak footage di bawah skrip. File yang diunggah otomatis masuk ke folder Google Drive sesuai Apps × jenis konten (diatur Leader di **Setting → Link footage**), dan link-nya ditulis ke kolom footage. Bila Drive belum terhubung, file disimpan di server.
 
 Untuk mengosongkan data lokal: hentikan server, hapus folder `data/`, lalu jalankan lagi.
 
@@ -55,7 +56,8 @@ Untuk mengosongkan data lokal: hentikan server, hapus folder `data/`, lalu jalan
 | `TRUST_PROXY` | – | Isi `1` bila di belakang nginx (IP asli dari `X-Real-IP` untuk pembatas login) |
 | `UPLOAD_DIR` | `data/uploads` | Folder file footage yang diunggah (di Docker: volume `creaboard_uploads`) |
 | `MAX_UPLOAD_MB` | `1024` | Batas ukuran satu file footage |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REFRESH_TOKEN` | – | Unggah footage ke Google Drive atas nama akun Google (lihat di bawah) |
+| `GOOGLE_APPS_SCRIPT_URL` / `GOOGLE_APPS_SCRIPT_SECRET` | – | Unggah footage ke Google Drive lewat Apps Script (paling mudah, maks. ±35 MB/file) |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REFRESH_TOKEN` | – | Alternatif: OAuth akun Google, untuk file besar (lihat di bawah) |
 | `GOOGLE_SERVICE_ACCOUNT_FILE` | – | Alternatif: service account, khusus folder di Shared Drive |
 
 ## Deploy di VPS (Docker + Supabase self-hosted)
@@ -75,6 +77,16 @@ Update: `cd /opt/creaboard && git pull && docker compose up -d --build`.
 
 ## Menghubungkan Google Drive
 
+**Cara mudah — Apps Script** (file maks. ±35 MB, cocok untuk gambar & klip pendek):
+
+1. Login ke https://script.google.com dengan akun pemilik folder footage → **New project** → tempel isi `scripts/drive-upload.gs`.
+2. Ganti `SECRET` di skrip dengan kode acak.
+3. **Deploy → New deployment → Web app**, *Execute as: Me*, *Who has access: Anyone* → izinkan akses → salin **Web app URL**.
+4. Isi `GOOGLE_APPS_SCRIPT_URL` dan `GOOGLE_APPS_SCRIPT_SECRET` di `/opt/creaboard/.env`, lalu `docker compose up -d`.
+5. Di **Setting → Link footage**, isi link folder Drive tiap platform × jenis konten.
+
+**Cara OAuth** (tanpa batas ukuran khusus, untuk video besar):
+
 1. Di [Google Cloud Console](https://console.cloud.google.com/): buat project → aktifkan **Google Drive API** → **OAuth consent screen** (External, tambahkan email Anda sebagai test user, lalu *Publish app* agar token tidak kedaluwarsa tiap 7 hari) → **Credentials → Create OAuth client ID → Desktop app**.
 2. Di komputer sendiri: `GOOGLE_CLIENT_ID=… GOOGLE_CLIENT_SECRET=… node scripts/google-auth.js`, buka link-nya, login dengan akun Google pemilik folder, lalu salin `GOOGLE_REFRESH_TOKEN` yang dicetak.
 3. Isi ketiga nilai di `/opt/creaboard/.env`, lalu `docker compose up -d`.
@@ -90,7 +102,7 @@ Update: `cd /opt/creaboard && git pull && docker compose up -d --build`.
 ```
 server/   index.js (entry) · app.js (API) · rules.js (aturan alur & izin) · auth.js · db.js · drive.js (unggah ke Google Drive)
 public/   index.html · styles.css · js/ (core, main, worksheet, editor, calendar, team, settings, footage)
-scripts/  seed-demo.js · google-auth.js (ambil refresh token Google Drive)
+scripts/  seed-demo.js · google-auth.js (refresh token OAuth) · drive-upload.gs (Apps Script penerima unggahan)
 tests/    api.test.js · features.test.js   →  npm test
 ```
 

@@ -5,7 +5,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
+import { createServer } from "node:http";
+import { Readable } from "node:stream";
 import { createApp } from "../server/app.js";
+import { createDrive } from "../server/drive.js";
 import { hashPassword } from "../server/auth.js";
 import { fromPglite, migrate } from "../server/db.js";
 
@@ -175,7 +178,7 @@ test("unggah footage otomatis masuk ke folder Drive sesuai apps × jenis konten;
   const mk = await login("nadia");
   const app = O.filter((o) => o.key === "app")[1].id;
   await lm.call("PUT", "/api/drive-folders", { app, type: "Carousel", url: "https://drive.google.com/drive/folders/FolderCarrousel01?usp=sharing" });
-  assert.deepEqual((await mk.call("GET", "/api/drive-status")).data, { connected: true });
+  assert.deepEqual((await mk.call("GET", "/api/drive-status")).data, { connected: true, maxMb: 1024 });
   // Skrip belum disimpan: unggah memakai apps & jenis dari form.
   const bytes = new TextEncoder().encode("gambar-desain");
   const up = await mk.call("POST", `/api/footage/upload?app=${app}&type=Carousel&name=desain.png`, bytes, { "Content-Type": "application/octet-stream", "X-Requested-With": "creaboard", "X-File-Type": "image/png" });
@@ -192,4 +195,65 @@ test("unggah footage otomatis masuk ke folder Drive sesuai apps × jenis konten;
   // Tanpa folder Drive untuk kombinasi itu → tersimpan di server.
   const local = await mk.call("POST", `/api/footage/upload?app=${app}&type=Singlepost&name=a.png`, bytes, { "Content-Type": "application/octet-stream", "X-Requested-With": "creaboard" });
   assert.equal(local.data.stored, "server");
+});
+
+test("kolom FOOTAGE bisa diubah/ditambah semua peran, termasuk setelah Creative selesai; isi skrip tetap terkunci", async () => {
+  const mk = await login("nadia");
+  const cr = await login("dimas");
+  let c = (await mk.call("POST", "/api/contents", { type: "Video", app: app1(), creative_user_id: cr.id, sheet: sheetFor("Video", "Footage bersama") })).data;
+  const rows = c.sheet.rows.map((_, i) => (i === 1 ? "https://drive.google.com/file/d/take1/view" : ""));
+  let r = await cr.call("PATCH", `/api/contents/${c.id}`, { revision: c.revision, changes: { footage: { metaFootage: ["https://drive.google.com/x", "", "", ""], rows } } });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  c = r.data;
+  assert.equal(c.sheet.rows[1].footage, "https://drive.google.com/file/d/take1/view");
+  assert.equal(c.sheet.metaFootage[0], "https://drive.google.com/x");
+  assert.equal(c.sheet.rows[1].text, "isi **tebal** dan *miring* kata-unik-xyz"); // isi skrip tidak tersentuh
+  // Staff Creative tetap tidak bisa mengubah isi skrip.
+  assert.equal((await cr.call("PATCH", `/api/contents/${c.id}`, { revision: c.revision, changes: { sheet: c.sheet } })).status, 403);
+  // Setelah Creative Done (skrip terkunci), footage masih bisa ditambah.
+  r = await mk.call("PATCH", `/api/contents/${c.id}`, { revision: c.revision, changes: { script_status: opt("script", "Ready"), talent_status: opt("talent", "Tidak perlu") } });
+  c = r.data;
+  r = await cr.call("PATCH", `/api/contents/${c.id}`, { revision: c.revision, changes: { link: "https://drive.google.com/hasil", creative_status: opt("creative", "Done") } });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  c = r.data;
+  r = await cr.call("PATCH", `/api/contents/${c.id}`, { revision: c.revision, changes: { footage: { rows: rows.map((v, i) => (i === 2 ? "https://drive.google.com/file/d/take2/view" : v)) } } });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal(r.data.sheet.rows[2].footage, "https://drive.google.com/file/d/take2/view");
+});
+
+test("salin rencana ke bulan berikutnya tanpa menimpa rencana yang sudah ada", async () => {
+  const lm = await login("leader");
+  const app = app1();
+  for (const [date, amount] of [["2026-10-05", 2], ["2026-10-31", 1]]) await lm.call("PUT", "/api/calendar/plan", { app, type: "Singlepost", date, amount });
+  await lm.call("PUT", "/api/calendar/plan", { app, type: "Singlepost", date: "2026-11-05", amount: 7 });
+  const r = await lm.call("POST", "/api/calendar/copy-next", { month: "2026-10" });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.month, "2026-11");
+  const nov = (await lm.call("GET", "/api/calendar?month=2026-11")).data.plans.filter((p) => p.app === app && p.type === "Singlepost");
+  assert.deepEqual(nov.map((p) => [p.date, p.amount]), [["2026-11-05", 7]]); // 31 Nov tidak ada; 5 Nov tidak ditimpa
+  assert.equal((await (await login("dimas")).call("POST", "/api/calendar/copy-next", { month: "2026-10" })).status, 403);
+});
+
+test("Apps Script: file dikirim base64 ke Web App lalu link Drive dikembalikan (mengikuti redirect)", async () => {
+  let received;
+  const fake = createServer((req, res) => {
+    if (req.method === "POST") {
+      let body = "";
+      req.on("data", (c) => (body += c));
+      req.on("end", () => {
+        received = JSON.parse(body);
+        res.writeHead(302, { Location: "/echo" }).end();
+      });
+    } else res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true, id: "f1", url: "https://drive.google.com/file/d/f1/view" }));
+  });
+  await new Promise((r) => fake.listen(0, r));
+  try {
+    const drv = createDrive({ GOOGLE_APPS_SCRIPT_URL: `http://localhost:${fake.address().port}/exec`, GOOGLE_APPS_SCRIPT_SECRET: "rahasia" });
+    const out = await drv.upload({ folderId: "Folder123456", name: "a.png", mime: "image/png", size: 3, stream: Readable.from([Buffer.from("abc")]) });
+    assert.deepEqual(out, { id: "f1", url: "https://drive.google.com/file/d/f1/view" });
+    assert.deepEqual(received, { secret: "rahasia", folderId: "Folder123456", name: "a.png", mime: "image/png", data: Buffer.from("abc").toString("base64") });
+    await assert.rejects(drv.upload({ folderId: "x", name: "b", mime: "video/mp4", size: 40 * 1024 * 1024, stream: Readable.from([]) }), /35 MB/);
+  } finally {
+    fake.close();
+  }
 });

@@ -1,9 +1,11 @@
 // Unggah footage langsung ke folder Google Drive (Drive API v3, tanpa library tambahan).
 //
-// Dua cara menghubungkan akun Google (pilih salah satu lewat environment variable):
-// 1. OAuth akun Google biasa (Gmail):  GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN
-//    → file tersimpan atas nama akun itu dan memakai kuota Drive-nya.
-// 2. Service account:  GOOGLE_SERVICE_ACCOUNT_FILE (path file JSON kunci)
+// Tiga cara menghubungkan akun Google (pilih salah satu lewat environment variable):
+// 1. Google Apps Script (paling mudah):  GOOGLE_APPS_SCRIPT_URL, GOOGLE_APPS_SCRIPT_SECRET
+//    → skrip scripts/drive-upload.gs di-deploy sebagai Web App oleh pemilik folder. Maks. ±35 MB per file.
+// 2. OAuth akun Google biasa (Gmail):  GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN
+//    → file tersimpan atas nama akun itu dan memakai kuota Drive-nya. Tanpa batas ukuran khusus.
+// 3. Service account:  GOOGLE_SERVICE_ACCOUNT_FILE (path file JSON kunci)
 //    → hanya untuk folder di Shared Drive (service account tidak punya kuota My Drive).
 import { createSign } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -18,7 +20,32 @@ export function folderIdFromUrl(url) {
   return s.match(/\/folders\/([\w-]{10,})/)?.[1] ?? s.match(/[?&]id=([\w-]{10,})/)?.[1] ?? null;
 }
 
+// Apps Script menerima isi file sebagai base64 di body (batas ±50 MB) → file mentah maks. ±35 MB.
+export const APPS_SCRIPT_MAX_BYTES = 35 * 1024 * 1024;
+
+function appsScriptDrive(url, secret) {
+  return {
+    enabled: true,
+    maxBytes: APPS_SCRIPT_MAX_BYTES,
+    async upload({ folderId, name, mime, size, stream }) {
+      if (size > APPS_SCRIPT_MAX_BYTES) throw new Error("File lebih dari 35 MB. Unggah langsung ke folder Drive, lalu tempel link-nya.");
+      const chunks = [];
+      for await (const ch of stream) chunks.push(ch);
+      // POST → Apps Script membalas redirect ke hasilnya; fetch mengikutinya otomatis.
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ secret, folderId, name, mime, data: Buffer.concat(chunks).toString("base64") }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error(`Unggah ke Google Drive gagal: ${data.error ?? res.status}`);
+      return { id: data.id, url: data.url };
+    },
+  };
+}
+
 export function createDrive(env = process.env) {
+  if (env.GOOGLE_APPS_SCRIPT_URL) return appsScriptDrive(env.GOOGLE_APPS_SCRIPT_URL, env.GOOGLE_APPS_SCRIPT_SECRET ?? "");
   let tokenRequest;
   if (env.GOOGLE_REFRESH_TOKEN && env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) {
     tokenRequest = () =>

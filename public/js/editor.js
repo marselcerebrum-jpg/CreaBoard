@@ -28,15 +28,22 @@ function blankSheet(type) {
 }
 
 // ───────────── markup sheet ─────────────
-function cell(value, path, { read, cls = "", label, footage = false } = {}) {
-  if (read) return `<div class="read">${richText(value) || '<span class="unfilled">—</span>'}</div>`;
-  const area = `<textarea class="${cls}" data-path="${path}" aria-label="${esc(label ?? path)}" placeholder="${footage ? "Tempel link footage…" : "Tulis di sini…"}">${esc(value ?? "")}</textarea>`;
+const linkList = (value) => {
+  const links = String(value ?? "").match(/https?:\/\/\S+/g) ?? [];
+  return links.map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">↗ Footage ${i + 1}</a>`).join("");
+};
+
+function cell(value, path, { read, cls = "", label, footage = false, footageEdit = false } = {}) {
+  // Kolom FOOTAGE bisa diisi semua peran, juga dari tampilan detail (tersimpan otomatis).
+  if (read && !(footage && footageEdit)) return `<div class="read">${richText(value) || '<span class="unfilled">—</span>'}</div>`;
+  const autosave = read ? 'data-onchange="footage-save"' : "";
+  const area = `<textarea class="${cls}" data-path="${path}" ${autosave} aria-label="${esc(label ?? path)}" placeholder="${footage ? "Tempel link footage…" : "Tulis di sini…"}">${esc(value ?? "")}</textarea>`;
   if (!footage) return area;
   // Kolom footage: tempel link, atau unggah dari komputer → otomatis ke folder Drive Apps × jenis konten.
-  return `<div class="ft-cell">${area}<label class="ft-upload" title="Unggah dari komputer"><span>⬆ Unggah dari komputer</span><input type="file" multiple hidden data-onchange="cell-upload" data-target="${path}"></label></div>`;
+  return `<div class="ft-cell">${area}<div class="ft-links">${linkList(value)}</div><label class="ft-upload" title="Unggah dari komputer"><span>⬆ Unggah dari komputer</span><input type="file" multiple hidden data-onchange="cell-upload" data-target="${path}"></label></div>`;
 }
 
-export function sheetMarkup(sh, { read = false, id } = {}) {
+export function sheetMarkup(sh, { read = false, id, footageEdit = false } = {}) {
   const rows = sh.rows ?? [];
   const head = `SKRIP ${id ? esc(id) : typeLabel(sh.type).toUpperCase()}`;
   if (sh.type === "Video") {
@@ -44,11 +51,11 @@ export function sheetMarkup(sh, { read = false, id } = {}) {
     return `<div class="sheet"><table><colgroup><col style="width:7%"><col style="width:23%"><col style="width:16%"><col style="width:17%"><col style="width:13%"><col style="width:12%"><col style="width:12%"></colgroup>
       <thead><tr><th colspan="2">${head}</th><th>FOOTAGE</th><th>ARAHAN EDITING</th><th>KETERANGAN</th><th>CAPTION TIKTOK</th><th>CAPTION INSTAGRAM</th></tr></thead><tbody>
       ${META.Video.map((label, i) => `<tr><td class="row-label">${label}</td><td>${cell(sh.meta[i], `meta.${i}`, { read, cls: "compact", label })}</td>
-        <td class="footage">${cell(sh.metaFootage?.[i], `metaFootage.${i}`, { read, cls: "compact", label: `${label} footage`, footage: true })}</td>
+        <td class="footage">${cell(sh.metaFootage?.[i], `metaFootage.${i}`, { read, cls: "compact", label: `${label} footage`, footage: true, footageEdit })}</td>
         <td class="editing">${cell(sh.metaEditing?.[i], `metaEditing.${i}`, { read, cls: "compact", label: `${label} arahan` })}</td>
         ${i === 0 ? `<td rowspan="${total}">${cell(sh.notes, "notes", { read, cls: "long", label: "Keterangan" })}</td><td rowspan="${total}">${cell(sh.caption1, "caption1", { read, cls: "long", label: "Caption TikTok" })}</td><td rowspan="${total}">${cell(sh.caption2, "caption2", { read, cls: "long", label: "Caption Instagram" })}</td>` : ""}</tr>`).join("")}
       ${rows.map((r, i) => `<tr><td class="row-label">${esc(r.label)}</td><td>${cell(r.text, `rows.${i}.text`, { read, label: `${r.label} skrip` })}</td>
-        <td class="footage">${cell(r.footage, `rows.${i}.footage`, { read, label: `${r.label} footage`, footage: true })}</td><td class="editing">${cell(r.direction, `rows.${i}.direction`, { read, label: `${r.label} arahan` })}</td></tr>`).join("")}
+        <td class="footage">${cell(r.footage, `rows.${i}.footage`, { read, label: `${r.label} footage`, footage: true, footageEdit })}</td><td class="editing">${cell(r.direction, `rows.${i}.direction`, { read, label: `${r.label} arahan` })}</td></tr>`).join("")}
       </tbody></table></div>`;
   }
   if (sh.type === "Carousel") {
@@ -279,7 +286,7 @@ export async function openDetail(id) {
   openModal(
     `<div class="modalhead"><div><div class="eyebrow">${esc(optLabel(c.app))} / ${typeLabel(c.type)} / SKRIP ${esc(contentNo(c))}${c.priority && c.priority !== "Reguler" ? ` · ${esc(c.priority.toUpperCase())}` : ""}</div><h2 id="modalTitle">${esc(c.title)}</h2></div><button class="close" aria-label="Tutup" data-action="close-modal">×</button></div>
     <div class="modalbody"><div class="inline-meta">${chips.map((x) => `<span>${esc(x)}</span>`).join("")}</div>
-      ${published}${sheetMarkup(c.sheet, { read: true, id: contentNo(c) })}
+      ${published}${sheetMarkup(c.sheet, { read: true, id: contentNo(c), footageEdit: c.type === "Video" && c.editable.includes("footage") })}
       <div class="note">Catatan: ${esc(c.notes) || "Belum ada catatan produksi."}</div>${c.type === "Video" ? "" : footageBoxHtml(c)}${publishForm}
       <details class="panel" style="margin-top:14px"><summary class="small" style="cursor:pointer">Riwayat perubahan (${c.events.length})</summary><ul class="events">
         ${c.events.map((e) => `<li><b>${esc(e.user_name ?? "—")}</b> · ${esc(FIELD_LABEL[e.field] ?? e.field)}${e.field === "sheet" || e.field === "created" ? "" : `: ${esc(eventValue(e.field, e.from_value))} → ${esc(eventValue(e.field, e.to_value))}`}<div class="small">${esc(fmtStamp(e.at))}</div></li>`).join("")}
@@ -316,6 +323,8 @@ document.addEventListener("keydown", (e) => {
 });
 let draftTimer;
 document.addEventListener("input", (e) => {
+  const box = e.target.closest?.(".ft-cell");
+  if (box) box.querySelector(".ft-links").innerHTML = linkList(e.target.value);
   if (!e.target.closest?.("#editorForm")) return;
   dirty = true;
   clearTimeout(draftTimer);
@@ -335,12 +344,13 @@ delegate(document.body, "change", {
     const files = [...el.files];
     el.value = "";
     if (!files.length) return;
-    const area = document.querySelector(`#editorForm textarea[data-path="${el.dataset.target}"]`);
+    const area = document.querySelector(`#modal textarea[data-path="${el.dataset.target}"]`);
     const label = el.parentElement.querySelector("span");
+    const inDetail = !$("editorForm");
     const params = draft.id ? { content_id: draft.id } : { app: $("eApp").value, type: draft.type };
     const submit = document.querySelector('#editorForm button[type="submit"]');
     uploading++;
-    submit.disabled = true;
+    if (submit) submit.disabled = true;
     el.parentElement.classList.add("busy");
     try {
       for (const file of files) {
@@ -349,6 +359,7 @@ delegate(document.body, "change", {
         const link = res.stored === "server" ? `${location.origin}${res.url}` : res.url;
         area.value = `${area.value.trim()}${area.value.trim() ? "\n" : ""}${link}`;
         area.dispatchEvent(new Event("input", { bubbles: true }));
+        if (inDetail) await saveDetailFootage();
         toast(res.stored === "drive" ? `${file.name} masuk ke folder Drive` : `${file.name} terunggah (disimpan di server — folder Drive belum terhubung)`);
       }
     } catch (e) {
@@ -356,10 +367,29 @@ delegate(document.body, "change", {
     } finally {
       label.textContent = "⬆ Unggah dari komputer";
       el.parentElement.classList.remove("busy");
-      if (--uploading === 0) submit.disabled = false;
+      if (--uploading === 0 && submit) submit.disabled = false;
     }
   },
+  "footage-save": () => saveDetailFootage(),
 });
+
+/** Simpan kolom FOOTAGE dari tampilan detail (semua peran). */
+async function saveDetailFootage() {
+  const c = draft?.content;
+  if (!c) return;
+  const val = (path) => document.querySelector(`#modal textarea[data-path="${path}"]`)?.value ?? "";
+  const footage = {
+    metaFootage: [0, 1, 2, 3].map((i) => val(`metaFootage.${i}`)),
+    rows: c.sheet.rows.map((_, i) => val(`rows.${i}.footage`)),
+  };
+  try {
+    draft.content = await updateContent(c.id, { footage });
+    document.querySelectorAll("#modal .ft-cell").forEach((box) => (box.querySelector(".ft-links").innerHTML = linkList(box.querySelector("textarea").value)));
+    toast("Footage tersimpan");
+  } catch (e) {
+    toast(errorText(e), { error: true });
+  }
+}
 
 delegate(document.body, "click", {
   fmt: (el) => applyMark(lastField, el.dataset.mark),
