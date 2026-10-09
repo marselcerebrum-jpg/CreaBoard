@@ -103,13 +103,17 @@ $("loginForm").addEventListener("submit", async (e) => {
   }
 });
 
+// Menu sidebar saat Create Konten / detail terbuka: tutup jendelanya dulu (dengan konfirmasi
+// bila ada isian yang belum disimpan), baru pindah halaman.
+const leaveModal = () => $("overlay").classList.contains("hidden") || requestClose();
 delegate(document.body, "click", {
-  nav: (el) => navigate(el.dataset.page),
-  settings: () => navigate("settings"),
+  nav: (el) => leaveModal() && navigate(el.dataset.page),
+  settings: () => leaveModal() && navigate("settings"),
   create: () => openContentPicker(),
   detail: (el) => openDetail(Number(el.dataset.id)),
   "close-modal": () => requestClose(),
   logout: async () => {
+    if (!leaveModal()) return;
     await api("POST", "/api/logout", {}).catch(() => null);
     location.hash = "";
     location.reload();
@@ -117,10 +121,12 @@ delegate(document.body, "click", {
 });
 
 /** Tutup jendela: picu simpan otomatis kolom yang sedang diisi, dan minta konfirmasi editor bila ada perubahan. */
+/** Tutup jendela; mengembalikan false bila pengguna membatalkan. */
 function requestClose() {
   document.activeElement?.blur?.(); // memicu "change" (mis. autosave footage di detail)
-  if (state.closeGuard && !state.closeGuard()) return;
+  if (state.closeGuard && !state.closeGuard()) return false;
   closeModal();
+  return true;
 }
 $("overlay").addEventListener("click", (e) => {
   if (e.target === $("overlay")) requestClose();
