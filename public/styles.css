@@ -396,7 +396,7 @@ tr:hover td { background: #FBFBF8; }
 .donut .track { stroke: var(--mist); }
 .donut .bar { stroke-linecap: round; }
 .d-ok .bar { stroke: var(--pine); } .d-mid .bar { stroke: var(--fern); } .d-low .bar { stroke: var(--accent); } .d-none .bar { stroke: transparent; }
-.pbar { height: 8px; border-radius: 99px; background: #FBE3D2; overflow: hidden; }
+.pbar { height: 8px; border-radius: 99px; background: var(--mist); overflow: hidden; }
 .pbar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--pine), var(--fern)); }
 
 .app-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
@@ -502,3 +502,65 @@ tr:hover td { background: #FBFBF8; }
 }
 .app-card header { justify-content: flex-start; border: 0; padding: 0; margin: 0; background: none; }
 .plan-bar .field { flex: 0 0 220px; }
+
+/* Kartu aplikasi: status tanpa rencana */
+.tag-noplan { font-size: 11px !important; font-weight: 700 !important; padding: 3px 8px; border-radius: 99px; background: var(--info-bg); color: var(--info) !important; }
+.pct-zero { color: var(--muted) !important; }
+.pct-ok { color: var(--ok) !important; }
+
+/* Toggle tampilan rencana (Leader) */
+.seg { display: inline-flex; padding: 3px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.seg button { display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; padding: 7px 12px; border-radius: 7px; font-weight: 600; color: var(--muted); }
+.seg button.active { background: var(--forest); color: #fff; }
+
+/* Lihat semua (tabel) */
+.table-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin-bottom: 12px; }
+.table-tools .btn.active { background: var(--forest); border-color: var(--forest); color: #fff; }
+.check { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink); cursor: pointer; }
+.check input { width: auto; height: auto; }
+.tbl-legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--muted); margin-left: auto; }
+.tbl-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.dot-extra { background: var(--info); }
+.all-wrap { overflow: auto; max-height: calc(100vh - 290px); border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.all-table { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; font-size: 12px; }
+.all-table th, .all-table td { border-bottom: 1px solid var(--mist); border-right: 1px solid var(--mist); padding: 0; text-align: center; background: #fff; position: static; white-space: nowrap; }
+.all-table thead th { position: sticky; top: 0; z-index: 3; background: var(--forest); color: #fff; padding: 7px 4px; min-width: 58px; font-weight: 600; }
+.all-table thead th b { display: block; font-size: 13px; }
+.all-table thead th small { display: block; font-size: 10px; opacity: .75; font-weight: 400; }
+.all-table thead th.we { background: #2B4136; }
+.all-table thead th.td { background: var(--accent); }
+.all-table .sc { position: sticky; left: 0; z-index: 2; text-align: left; padding: 8px 12px; min-width: 190px; max-width: 190px; background: #fff; box-shadow: 1px 0 0 var(--line); }
+.all-table thead th.sc { z-index: 5; background: var(--forest); }
+.all-table .sc.type { padding-left: 46px; font-weight: 600; color: var(--muted); }
+.all-table .grp th, .all-table .grp td { background: var(--sage-soft); border-top: 2px solid #fff; }
+.all-table .grp .sc { display: flex; align-items: center; gap: 8px; background: var(--sage-soft); }
+.grp-meta { margin-left: auto; font-size: 11px; font-weight: 700; color: var(--forest); }
+.all-table td.we { background: #FAFAF6; }
+.all-table td.td { background: #FFF4EC; }
+.tc { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 5px 4px; }
+.tc .plan-box { height: 26px; border-radius: 6px; }
+.tc .plan-box input { width: 30px; height: 24px; font-size: 13px; font-weight: 700; }
+.tc .plan-box input::placeholder { color: #C6C9BE; }
+.tc .plan-box .swatch { width: 12px; height: 24px; font-size: 8px; opacity: .45; }
+.tc .plan-box:hover .swatch { opacity: 1; }
+.ta { font-size: 12px; min-height: 15px; line-height: 15px; }
+.ta-ok { color: var(--ok); } .ta-under { color: var(--accent); } .ta-wait { color: var(--muted); } .ta-extra { color: var(--info); }
+.all-table td.tot, .all-table th.tot { position: sticky; right: 0; z-index: 2; min-width: 96px; padding: 6px 10px; box-shadow: -1px 0 0 var(--line); text-align: right; }
+.all-table thead th.tot { z-index: 5; background: var(--forest); text-align: center; }
+.all-table td.tot b { font-size: 14px; color: var(--forest); }
+.all-table td.tot span, .all-table tfoot td span { color: var(--muted); margin-left: 3px; }
+.all-table td.tot em { display: block; font-style: normal; font-size: 11px; font-weight: 700; color: var(--accent); }
+.all-table tfoot th, .all-table tfoot td { position: sticky; bottom: 0; z-index: 2; background: #F5EFE2; padding: 8px 4px; font-weight: 700; border-top: 2px solid var(--line); }
+.all-table tfoot .sc { z-index: 4; background: #F5EFE2; }
+.all-table tfoot .tot { z-index: 4; background: #F5EFE2; }
+/* Tabel lihat semua: lebih padat */
+.all-table thead th { min-width: 66px; }
+.tc { flex-direction: row; justify-content: center; gap: 4px; padding: 4px; }
+.ta { min-width: 14px; text-align: left; }
+.tc .plan-box:has(input:placeholder-shown) { border-color: transparent; background: var(--mist); }
+.tc .plan-box:has(input:placeholder-shown):hover, .tc .plan-box:focus-within { border-color: var(--fern); background: #fff; }
+.all-table .sc { padding: 6px 12px; }
+.all-table .grp .sc { padding: 8px 12px; }
+.all-table td.tot { padding: 4px 10px; }
+.all-table td.tot em { display: inline; margin-left: 6px; }
+.all-table tfoot td.we, .all-table tfoot td.td { background: #F5EFE2; }

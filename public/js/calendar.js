@@ -17,6 +17,8 @@ let planApp = "";
 let planType = "Video";
 let fltApp = "";
 let fltType = "";
+let planMode = "calendar"; // Leader: "calendar" (per aplikasi) atau "table" (lihat semua)
+let showEmpty = false;
 let data = null;
 
 const key = (app, type, date) => JSON.stringify([app, type, date]);
@@ -108,10 +110,11 @@ function summaryView(r) {
     .map((a) => {
       const t = r.appTotal(a.id);
       const p = pct(t.actual, t.plan);
+      const noPlan = !t.plan;
       return `<article class="app-card">
         <header>${appMark(a.label)}</header>
-        <div class="app-big"><b>${t.actual} / ${t.plan}</b><span>${pctText(p)}</span></div>
-        <div class="small">skrip ready dari rencana</div>${bar(p)}
+        <div class="app-big"><b>${t.actual} / ${t.plan}</b>${noPlan ? '<span class="tag-noplan">Belum ada rencana</span>' : `<span class="${p >= 100 ? "pct-ok" : p ? "" : "pct-zero"}">${pctText(p)}</span>`}</div>
+        <div class="small">${noPlan ? `${t.actual} skrip ready tanpa rencana` : "skrip ready dari rencana"}</div>${bar(noPlan ? 0 : p)}
         <div class="type-split">${TYPES.map((ty) => `<div><span>${typeLabel(ty)}</span><b>${r.by[a.id][ty].actual} / ${r.by[a.id][ty].plan}</b></div>`).join("")}</div>
         <button class="btn mini wide" data-action="cal-open" data-app="${esc(a.id)}">Lihat detail →</button>
       </article>`;
@@ -126,8 +129,16 @@ function summaryView(r) {
 }
 
 // ───────────── 02 Rencana bulanan (kalender per apps & jenis) ─────────────
+const modeToggle = () =>
+  isLeader()
+    ? `<div class="seg" role="tablist" aria-label="Tampilan rencana">
+        <button class="${planMode === "calendar" ? "active" : ""}" data-action="plan-mode" data-mode="calendar">${icon("calendar", 15)} Per aplikasi</button>
+        <button class="${planMode === "table" ? "active" : ""}" data-action="plan-mode" data-mode="table">${icon("dashboard", 15)} Lihat semua (tabel)</button></div>`
+    : "";
+
 function planView(r) {
   if (!r.apps.length) return '<div class="panel empty">Belum ada apps yang bisa ditampilkan.</div>';
+  if (planMode === "table" && isLeader()) return tableView(r);
   if (!r.apps.some((a) => a.id === planApp)) planApp = r.apps[0].id;
   const app = r.apps.find((a) => a.id === planApp);
   const linked = new Set(data.kpiLinked);
@@ -160,7 +171,7 @@ function planView(r) {
     </div>`;
   });
   const p = pct(actualSum, target);
-  return `<div class="plan-head"><h2>${esc(app.label)} · ${esc(monthLabel(month))}</h2>${monthTools({ live: false })}</div>
+  return `<div class="plan-head"><h2>${esc(app.label)} · ${esc(monthLabel(month))}</h2>${modeToggle()}${monthTools({ live: false })}</div>
     <div class="plan-bar">
       <div class="field"><label for="planApp">Aplikasi</label><select id="planApp" data-onchange="plan-app">${r.apps.map((a) => `<option value="${esc(a.id)}" ${a.id === app.id ? "selected" : ""}>${esc(a.label)}</option>`).join("")}</select></div>
       <div class="type-tabs" role="tablist">${TYPES.map((t) => `<button class="btn ${t === planType ? "active" : ""}" role="tab" aria-selected="${t === planType}" data-action="plan-type" data-type="${t}">${typeLabel(t)}</button>`).join("")}</div>
@@ -178,6 +189,64 @@ function planView(r) {
     <div class="legend"><span><i class="dot dot-ok"></i>Aktual memenuhi rencana</span><span><i class="dot dot-under"></i>Aktual di bawah rencana</span>
       <span class="legend-chip legend-self">Berwarna · edit mandiri</span><span class="legend-chip legend-linked">Garis putus · terhubung KPI</span>
       ${editable ? "" : '<span class="small">Rencana hanya bisa diubah Leader dan staff Marketing pemegang apps ini.</span>'}</div>`;
+}
+
+// ───────────── 02b Lihat semua (tabel, khusus Leader) ─────────────
+function tableView(r) {
+  const dates = daysOf(month);
+  const linked = new Set(data.kpiLinked);
+  const types = TYPES.filter((t) => !fltType || t === fltType);
+  const sum = (id) => types.reduce((s, t) => ({ plan: s.plan + r.by[id][t].plan, actual: s.actual + r.by[id][t].actual }), { plan: 0, actual: 0 });
+  const apps = r.apps.filter((a) => showEmpty || sum(a.id).plan || sum(a.id).actual);
+  const hidden = r.apps.length - apps.length;
+  const dayTotals = dates.map(() => ({ plan: 0, actual: 0 }));
+  const wd = (d) => new Intl.DateTimeFormat("id-ID", { weekday: "short", timeZone: "UTC" }).format(new Date(`${d}T12:00:00Z`));
+  const weekend = (d) => [0, 6].includes(new Date(`${d}T12:00:00Z`).getUTCDay());
+  const cls = (d) => `${weekend(d) ? "we" : ""} ${d === state.today ? "td" : ""}`;
+  const totalCell = ({ plan, actual }) => {
+    const v = pct(actual, plan);
+    return `<td class="tot"><b>${actual}</b><span>/ ${plan}</span>${plan ? `<em class="${v >= 100 ? "pct-ok" : ""}">${v}%</em>` : ""}</td>`;
+  };
+  const body = apps.map((a) => {
+    const t = sum(a.id);
+    const v = pct(t.actual, t.plan);
+    const group = `<tr class="grp"><th class="sc">${appMark(a.label)}<span class="grp-meta">${t.actual} / ${t.plan}${t.plan ? ` · ${v}%` : ""}</span></th><td colspan="${dates.length + 1}"></td></tr>`;
+    const rows = types.map((ty) => {
+      const cells = dates.map((d, i) => {
+        const k = key(a.id, ty, d);
+        const plan = r.plans[k];
+        const amount = plan?.amount;
+        const actual = data.actuals[k] ?? 0;
+        dayTotals[i].plan += amount ?? 0;
+        dayTotals[i].actual += actual;
+        const status = amount == null ? (actual ? "extra" : "none") : actual >= amount ? "ok" : d <= state.today ? "under" : "wait";
+        const isLinked = linked.has(k);
+        return `<td class="${cls(d)}"><div class="tc">
+          <span class="plan-box ${plan?.color ? `c-${plan.color}` : ""} ${isLinked ? "linked" : ""}">
+            <input type="number" min="0" step="1" inputmode="numeric" value="${amount ?? ""}" placeholder="·" aria-label="Rencana ${esc(a.label)} ${typeLabel(ty)} ${d}"
+              data-onchange="plan" data-app="${esc(a.id)}" data-type="${ty}" data-date="${d}" ${isLinked ? "disabled" : ""}>
+            <button class="swatch" aria-label="Warna ${d}" data-action="plan-color" data-app="${esc(a.id)}" data-type="${ty}" data-date="${d}">●</button></span>
+          <b class="ta ta-${status}" title="Aktual (skrip ready)">${status === "none" ? "" : actual}</b></div></td>`;
+      });
+      return `<tr><th class="sc type">${typeLabel(ty)}</th>${cells.join("")}${totalCell(r.by[a.id][ty])}</tr>`;
+    });
+    return group + rows.join("");
+  }).join("");
+  const grand = apps.reduce((s, a) => {
+    const t = sum(a.id);
+    return { plan: s.plan + t.plan, actual: s.actual + t.actual };
+  }, { plan: 0, actual: 0 });
+  return `<div class="plan-head"><h2>Semua aplikasi · ${esc(monthLabel(month))}</h2>${modeToggle()}${monthTools({ live: false })}</div>
+    <div class="table-tools">
+      <div class="type-tabs">${["", ...TYPES].map((t) => `<button class="btn mini ${t === fltType ? "active" : ""}" data-action="tbl-type" data-type="${t}">${t ? typeLabel(t) : "Semua jenis"}</button>`).join("")}</div>
+      <label class="check"><input type="checkbox" data-onchange="tbl-empty" ${showEmpty ? "checked" : ""}> Tampilkan aplikasi tanpa rencana${hidden ? ` (${hidden})` : ""}</label>
+      <div class="tbl-legend"><span><i class="dot dot-ok"></i>tercapai</span><span><i class="dot dot-under"></i>di bawah rencana</span><span><i class="dot dot-extra"></i>tanpa rencana</span><span class="small">Kotak = rencana · angka di sampingnya = aktual (skrip ready)</span></div>
+    </div>
+    <div class="all-wrap" id="allWrap"><table class="all-table">
+      <thead><tr><th class="sc">Aplikasi / jenis</th>${dates.map((d, i) => `<th class="${cls(d)}" data-day="${d}"><b>${i + 1}</b><small>${wd(d)}</small></th>`).join("")}<th class="tot">Total</th></tr></thead>
+      <tbody>${body || `<tr><td colspan="${dates.length + 2}" class="empty">Belum ada rencana bulan ini.</td></tr>`}</tbody>
+      ${apps.length ? `<tfoot><tr><th class="sc">Total per hari</th>${dayTotals.map((t, i) => `<td class="${cls(dates[i])}">${t.plan || t.actual ? `<b>${t.actual}</b><span>/ ${t.plan}</span>` : ""}</td>`).join("")}${totalCell(grand)}</tr></tfoot>` : ""}
+    </table></div>`;
 }
 
 // ───────────── 03 Aktual: pantau selisih ─────────────
@@ -266,6 +335,8 @@ function evalView(r) {
 
 // ───────────── halaman ─────────────
 export async function renderCalendar(root) {
+  const prevWrap = root.querySelector("#allWrap");
+  tableScroll = prevWrap ? { month, left: prevWrap.scrollLeft, top: prevWrap.scrollTop } : null;
   month ||= state.today.slice(0, 7);
   data = await api("GET", `/api/calendar?month=${month}`);
   const r = compute();
@@ -274,7 +345,20 @@ export async function renderCalendar(root) {
     <nav class="plan-nav" aria-label="Alur perencanaan">${VIEWS.map(([k, label, ic], i) => `<button class="${k === view ? "active" : ""}" data-action="cal-view" data-view="${k}" ${k === view ? 'aria-current="page"' : ""}>
       <span class="step">${String(i + 1).padStart(2, "0")}</span>${icon(ic, 17)}<span>${label}</span></button>`).join("")}</nav>
     <div class="plan-main">${content}</div></div>`;
+  const wrap = root.querySelector("#allWrap");
+  if (wrap) {
+    if (tableScroll && tableScroll.month === month) {
+      wrap.scrollLeft = tableScroll.left;
+      wrap.scrollTop = tableScroll.top;
+    } else {
+      const th = wrap.querySelector(`th[data-day="${state.today}"]`);
+      const first = wrap.querySelector("thead th.sc");
+      // Hari ini tampil sebagai kolom ketiga setelah kolom Aplikasi/jenis.
+      if (th && first) wrap.scrollLeft = Math.max(0, th.getBoundingClientRect().left - wrap.getBoundingClientRect().left - first.offsetWidth - th.offsetWidth * 2);
+    }
+  }
 }
+let tableScroll = null; // posisi geser tabel dipertahankan saat data diperbarui
 
 function exportCsv() {
   const r = compute();
@@ -350,6 +434,10 @@ delegate(document.body, "change", {
     fltType = el.value;
     changed();
   },
+  "tbl-empty": (el) => {
+    showEmpty = el.checked;
+    changed();
+  },
 });
 
 delegate(document.body, "click", {
@@ -361,6 +449,14 @@ delegate(document.body, "click", {
     planApp = el.dataset.app;
     if (el.dataset.type) planType = el.dataset.type;
     view = "plan";
+    changed();
+  },
+  "plan-mode": (el) => {
+    planMode = el.dataset.mode;
+    changed();
+  },
+  "tbl-type": (el) => {
+    fltType = el.dataset.type;
     changed();
   },
   "plan-type": (el) => {
