@@ -352,7 +352,6 @@ tr:hover td { background: #FBFBF8; }
 .ft-upload:hover { background: var(--sage); color: var(--forest); }
 .ft-upload.busy { cursor: progress; opacity: .8; }
 .read .text-link { color: var(--pine); text-decoration: underline; word-break: break-all; }
-.warn-note { background: var(--warn-bg); color: var(--warn); }
 
 /* Kolom FOOTAGE: daftar link yang bisa diklik */
 .ft-links { display: flex; flex-wrap: wrap; gap: 4px 8px; padding: 0 10px 6px; }

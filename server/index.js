@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 import { hashPassword } from "./auth.js";
 import { createApp } from "./app.js";
-import { createDrive } from "./drive.js";
 import { fromPglite, fromPool, migrate } from "./db.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -39,14 +38,7 @@ async function main() {
   }
   const port = Number(process.env.PORT ?? 3000);
   const host = process.env.HOST ?? "0.0.0.0";
-  let drive = { enabled: false };
-  try {
-    drive = createDrive();
-  } catch (e) {
-    console.error(`  Google Drive tidak aktif: ${e.message}`);
-  }
-  console.log(`  Unggah footage: ${drive.enabled ? "Google Drive (folder per Apps × jenis konten)" : "disimpan di server"}`);
-  createApp({ db, publicDir: join(root, "public"), uploadDir: process.env.UPLOAD_DIR ?? join(root, "data", "uploads"), maxUploadMb: Number(process.env.MAX_UPLOAD_MB ?? 1024), drive, secureCookies: process.env.SECURE_COOKIES === "1", trustProxy: process.env.TRUST_PROXY === "1" }).listen(port, host, () => {
+  createApp({ db, publicDir: join(root, "public"), uploadDir: process.env.UPLOAD_DIR ?? join(root, "data", "uploads"), maxUploadMb: Number(process.env.MAX_UPLOAD_MB ?? 1024), secureCookies: process.env.SECURE_COOKIES === "1", trustProxy: process.env.TRUST_PROXY === "1" }).listen(port, host, () => {
     console.log(`  Content Studio berjalan di http://localhost:${port}`);
   });
 }

@@ -39,7 +39,7 @@ function cell(value, path, { read, cls = "", label, footage = false, footageEdit
   const autosave = read ? 'data-onchange="footage-save"' : "";
   const area = `<textarea class="${cls}" data-path="${path}" ${autosave} aria-label="${esc(label ?? path)}" placeholder="${footage ? "Tempel link footage…" : "Tulis di sini…"}">${esc(value ?? "")}</textarea>`;
   if (!footage) return area;
-  // Kolom footage: tempel link, atau unggah dari komputer → otomatis ke folder Drive Apps × jenis konten.
+  // Kolom footage: tempel link, atau unggah dari komputer (file disimpan di server CreaBoard).
   return `<div class="ft-cell">${area}<div class="ft-links">${linkList(value)}</div><label class="ft-upload" title="Unggah dari komputer"><span>⬆ Unggah dari komputer</span><input type="file" multiple hidden data-onchange="cell-upload" data-target="${path}"></label></div>`;
 }
 
@@ -337,7 +337,7 @@ document.addEventListener("change", (e) => {
   }
 });
 
-// Unggah dari kolom FOOTAGE: hasilnya (link Drive / file server) ditambahkan ke kolom itu.
+// Unggah dari kolom FOOTAGE: link file hasil unggahan ditambahkan ke kolom itu.
 let uploading = 0;
 delegate(document.body, "change", {
   "cell-upload": async (el) => {
@@ -356,11 +356,11 @@ delegate(document.body, "change", {
       for (const file of files) {
         const res = await uploadFile(file, params, (pct) => (label.textContent = `${file.name.slice(0, 18)} · ${pct}%`));
         if (!draft.id) uploadedIds.push(res.id);
-        const link = res.stored === "server" ? `${location.origin}${res.url}` : res.url;
+        const link = `${location.origin}${res.url}`;
         area.value = `${area.value.trim()}${area.value.trim() ? "\n" : ""}${link}`;
         area.dispatchEvent(new Event("input", { bubbles: true }));
         if (inDetail) await saveDetailFootage();
-        toast(res.stored === "drive" ? `${file.name} masuk ke folder Drive` : `${file.name} terunggah (disimpan di server — folder Drive belum terhubung)`);
+        toast(`${file.name} terunggah`);
       }
     } catch (e) {
       toast(e.message, { error: true });

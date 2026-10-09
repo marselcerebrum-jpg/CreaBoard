@@ -13,7 +13,6 @@ import {
   actualCounts, addDays, applyWorkflow, canSee, contentFlags, DEADLINE_DAYS, defaultSheet, editableFields, fail, HttpError,
   isDate, isHttpUrl, isLeader, jakartaDate, leads, manages, mergeFootage, normalizeSheet, optionIndex, performance, PRIORITIES, scriptReadyErrors, titleFromSheet, TYPES,
 } from "./rules.js";
-import { folderIdFromUrl } from "./drive.js";
 
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
   ".svg": "image/svg+xml", ".png": "image/png", ".json": "application/json", ".webmanifest": "application/manifest+json", ".ico": "image/x-icon" };
@@ -28,7 +27,7 @@ const CONTENT_COLS = ["title", "app", "type", "created_date", "upload_date", "sc
   "creative_status", "qc_status", "link", "notes", "marketing_user_id", "creative_user_id", "script_ready_at",
   "talent_done_at", "creative_done_at", "link_at", "qc_at", "priority"];
 
-export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024, drive = { enabled: false }, now = () => new Date(), secureCookies = false, trustProxy = false }) {
+export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024, now = () => new Date(), secureCookies = false, trustProxy = false }) {
   // Di belakang reverse proxy (nginx), IP asli dibaca dari X-Real-IP.
   const clientIp = (req) => (trustProxy && req.headers["x-real-ip"]) || req.socket.remoteAddress;
   const today = () => jakartaDate(now());
@@ -545,24 +544,6 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
     if (size > maxUploadMb * 1024 * 1024) fail(413, `File terlalu besar (maks. ${maxUploadMb} MB)`);
     const mime = String(req.headers["x-file-type"] || "application/octet-stream").slice(0, 100);
 
-    // Google Drive terhubung dan folder Apps × jenis konten sudah diatur → langsung ke folder itu.
-    const folder = drive.enabled ? await db.one("select url from drive_folders where app = ? and type = ?", [app, type]) : null;
-    const folderId = folderIdFromUrl(folder?.url);
-    if (folderId) {
-      let file;
-      try {
-        file = await drive.upload({ folderId, name, mime, size, stream: req });
-      } catch (e) {
-        req.resume();
-        fail(502, e.message);
-      }
-      const row = await db.one(
-        "insert into footage (content_id, app, type, kind, title, url, mime, size, uploaded_by) values (?, ?, ?, 'link', ?, ?, ?, ?, ?) returning id",
-        [contentId, app, type, name, file.url, mime, size, user.id],
-      );
-      return { id: row.id, url: file.url, title: name, stored: "drive" };
-    }
-
     if (!uploadDir) fail(503, "Penyimpanan file belum dikonfigurasi");
     const month = today().slice(0, 7);
     await mkdir(join(uploadDir, month), { recursive: true });
@@ -583,7 +564,7 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
       "insert into footage (content_id, app, type, kind, title, file_path, mime, size, uploaded_by) values (?, ?, ?, 'file', ?, ?, ?, ?, ?) returning id",
       [contentId, app, type, name, rel, mime, written, user.id],
     );
-    return { id: row.id, url: `/api/footage/${row.id}/file`, title: name, stored: "server" };
+    return { id: row.id, url: `/api/footage/${row.id}/file`, title: name };
   }, { raw: true });
 
   // Footage yang diunggah saat skrip belum disimpan dihubungkan ke skripnya setelah tersimpan.
@@ -595,8 +576,6 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
     }
     return { ok: true };
   });
-
-  route("GET", "/api/drive-status", async () => ({ connected: Boolean(drive.enabled), maxMb: drive.maxBytes ? Math.floor(drive.maxBytes / 1048576) : maxUploadMb }));
 
   route("GET", "/api/footage/:id/file", async ({ params, res, query }) => {
     const f = await db.one("select * from footage where id = ? and kind = 'file'", [Number(params.id) || 0]);

@@ -1,6 +1,5 @@
-// Footage: unggah dari komputer atau link Google Drive, diisi langsung di form skrip
+// Footage: unggah dari komputer (disimpan di server) atau tempel link, diisi langsung di form skrip
 // (Video: di kolom FOOTAGE tiap baris; Carrousel/Singlepost: kotak footage di bawah skrip).
-// File yang diunggah otomatis masuk ke folder Drive Apps × jenis konten bila Drive terhubung.
 // Rekap per platform (Apps) × jenis konten beserta link folder Drive ada di Setting → Link footage.
 import {
   $, api, delegate, errorText, esc, fmtDate, fmtSize, isLeader, myApps, optionsFor, optLabel, state, toast, TYPES, typeLabel,
@@ -99,7 +98,7 @@ function progressBar(bar, file) {
   };
 }
 
-/** Unggah satu file; hasil: { id, url, title, stored: "drive" | "server" }. */
+/** Unggah satu file; hasil: { id, url, title }. */
 export const uploadFile = (file, params, onProgress = () => {}) => uploadOne(file, params, onProgress);
 
 function uploadOne(file, params, onProgress) {
@@ -156,17 +155,14 @@ export async function renderFootageLibrary(root) {
   const query = new URLSearchParams();
   if (filterApp) query.set("app", filterApp);
   if (filterType) query.set("type", filterType);
-  const [items, folders, status] = await Promise.all([api("GET", `/api/footage?${query}`), api("GET", "/api/drive-folders"), api("GET", "/api/drive-status")]);
+  const [items, folders] = await Promise.all([api("GET", `/api/footage?${query}`), api("GET", "/api/drive-folders")]);
   const groups = [];
   for (const a of apps.filter((o) => !filterApp || o.id === filterApp)) {
     for (const t of TYPES.filter((x) => !filterType || x === filterType)) {
       groups.push({ a, t, list: items.filter((f) => f.app === a.id && f.type === t), folder: folders.find((x) => x.app === a.id && x.type === t) });
     }
   }
-  root.innerHTML = `<div class="note ${status.connected ? "" : "warn-note"}">${status.connected
-      ? "Google Drive terhubung. File yang diunggah dari form skrip otomatis masuk ke folder di bawah sesuai platform dan jenis kontennya. Pastikan tiap folder dibagikan (Editor) ke akun Google CreaBoard."
-      : "Google Drive belum terhubung ke server, jadi file yang diunggah sementara disimpan di server CreaBoard. Link folder di bawah tetap dipakai begitu Drive dihubungkan."}</div>
-    <div class="filters">
+  root.innerHTML = `<div class="filters">
       <div class="field"><label for="ftApp">Platform</label><select id="ftApp" data-onchange="footage-filter" data-key="app"><option value="">Semua platform</option>${apps.map((o) => `<option value="${esc(o.id)}" ${o.id === filterApp ? "selected" : ""}>${esc(o.label)}</option>`).join("")}</select></div>
       <div class="field"><label for="ftType">Jenis konten</label><select id="ftType" data-onchange="footage-filter" data-key="type"><option value="">Semua</option>${TYPES.map((t) => `<option value="${t}" ${t === filterType ? "selected" : ""}>${typeLabel(t)}</option>`).join("")}</select></div>
     </div>

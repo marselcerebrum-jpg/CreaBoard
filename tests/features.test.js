@@ -5,26 +5,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
-import { createServer } from "node:http";
-import { Readable } from "node:stream";
 import { createApp } from "../server/app.js";
-import { createDrive } from "../server/drive.js";
 import { hashPassword } from "../server/auth.js";
 import { fromPglite, migrate } from "../server/db.js";
 
 const NOW = new Date("2026-10-10T03:00:00Z");
 let server, base, db, uploadDir, O;
-// Google Drive palsu: mencatat file yang "diunggah" ke folder.
-const driveUploads = [];
-const drive = {
-  enabled: true,
-  async upload({ folderId, name, mime, size, stream }) {
-    const chunks = [];
-    for await (const ch of stream) chunks.push(ch);
-    driveUploads.push({ folderId, name, mime, size, body: Buffer.concat(chunks).toString() });
-    return { id: "drv1", url: "https://drive.google.com/file/d/drv1/view" };
-  },
-};
 
 before(async () => {
   db = await migrate(fromPglite(await PGlite.create()));
@@ -35,7 +21,7 @@ before(async () => {
   O = await db.query("select * from options order by key, sort");
   const nadia = (await db.one("select id from users where username = 'nadia'")).id;
   for (const o of O.filter((x) => x.key === "app")) await db.run("insert into user_apps (user_id, app) values (?, ?)", [nadia, o.id]);
-  server = createApp({ db, publicDir: join(import.meta.dirname, "..", "public"), uploadDir, drive, now: () => NOW });
+  server = createApp({ db, publicDir: join(import.meta.dirname, "..", "public"), uploadDir, now: () => NOW });
   await new Promise((r) => server.listen(0, r));
   base = `http://localhost:${server.address().port}`;
 });
@@ -173,28 +159,18 @@ test("pembaruan otomatis: perubahan dikirim ke browser lewat /api/stream", async
   ctrl.abort();
 });
 
-test("unggah footage otomatis masuk ke folder Drive sesuai apps × jenis konten; dihubungkan ke skrip setelah tersimpan", async () => {
-  const lm = await login("leader");
+test("footage yang diunggah sebelum skrip tersimpan dihubungkan ke skripnya setelah disimpan", async () => {
   const mk = await login("nadia");
   const app = O.filter((o) => o.key === "app")[1].id;
-  await lm.call("PUT", "/api/drive-folders", { app, type: "Carousel", url: "https://drive.google.com/drive/folders/FolderCarrousel01?usp=sharing" });
-  assert.deepEqual((await mk.call("GET", "/api/drive-status")).data, { connected: true, maxMb: 1024 });
-  // Skrip belum disimpan: unggah memakai apps & jenis dari form.
   const bytes = new TextEncoder().encode("gambar-desain");
   const up = await mk.call("POST", `/api/footage/upload?app=${app}&type=Carousel&name=desain.png`, bytes, { "Content-Type": "application/octet-stream", "X-Requested-With": "creaboard", "X-File-Type": "image/png" });
   assert.equal(up.status, 200, JSON.stringify(up.data));
-  assert.equal(up.data.stored, "drive");
-  assert.equal(up.data.url, "https://drive.google.com/file/d/drv1/view");
-  assert.deepEqual(driveUploads.at(-1), { folderId: "FolderCarrousel01", name: "desain.png", mime: "image/png", size: bytes.length, body: "gambar-desain" });
-  // Setelah skrip tersimpan, footage dihubungkan ke skrip itu.
+  assert.equal(up.data.url, `/api/footage/${up.data.id}/file`);
   const c = (await mk.call("POST", "/api/contents", { type: "Carousel", app, sheet: sheetFor("Carousel", "Dengan desain") })).data;
   assert.equal((await mk.call("POST", "/api/footage/attach", { content_id: c.id, ids: [up.data.id] })).status, 200);
   const list = (await mk.call("GET", `/api/footage?content_id=${c.id}`)).data;
-  assert.equal(list.length, 1);
-  assert.equal(list[0].url, "https://drive.google.com/file/d/drv1/view");
-  // Tanpa folder Drive untuk kombinasi itu → tersimpan di server.
-  const local = await mk.call("POST", `/api/footage/upload?app=${app}&type=Singlepost&name=a.png`, bytes, { "Content-Type": "application/octet-stream", "X-Requested-With": "creaboard" });
-  assert.equal(local.data.stored, "server");
+  assert.deepEqual(list.map((f) => [f.title, f.kind]), [["desain.png", "file"]]);
+  assert.equal((await mk.call("GET", up.data.url)).data, "gambar-desain");
 });
 
 test("kolom FOOTAGE bisa diubah/ditambah semua peran, termasuk setelah Creative selesai; isi skrip tetap terkunci", async () => {
@@ -232,28 +208,4 @@ test("salin rencana ke bulan berikutnya tanpa menimpa rencana yang sudah ada", a
   const nov = (await lm.call("GET", "/api/calendar?month=2026-11")).data.plans.filter((p) => p.app === app && p.type === "Singlepost");
   assert.deepEqual(nov.map((p) => [p.date, p.amount]), [["2026-11-05", 7]]); // 31 Nov tidak ada; 5 Nov tidak ditimpa
   assert.equal((await (await login("dimas")).call("POST", "/api/calendar/copy-next", { month: "2026-10" })).status, 403);
-});
-
-test("Apps Script: file dikirim base64 ke Web App lalu link Drive dikembalikan (mengikuti redirect)", async () => {
-  let received;
-  const fake = createServer((req, res) => {
-    if (req.method === "POST") {
-      let body = "";
-      req.on("data", (c) => (body += c));
-      req.on("end", () => {
-        received = JSON.parse(body);
-        res.writeHead(302, { Location: "/echo" }).end();
-      });
-    } else res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true, id: "f1", url: "https://drive.google.com/file/d/f1/view" }));
-  });
-  await new Promise((r) => fake.listen(0, r));
-  try {
-    const drv = createDrive({ GOOGLE_APPS_SCRIPT_URL: `http://localhost:${fake.address().port}/exec`, GOOGLE_APPS_SCRIPT_SECRET: "rahasia" });
-    const out = await drv.upload({ folderId: "Folder123456", name: "a.png", mime: "image/png", size: 3, stream: Readable.from([Buffer.from("abc")]) });
-    assert.deepEqual(out, { id: "f1", url: "https://drive.google.com/file/d/f1/view" });
-    assert.deepEqual(received, { secret: "rahasia", folderId: "Folder123456", name: "a.png", mime: "image/png", data: Buffer.from("abc").toString("base64") });
-    await assert.rejects(drv.upload({ folderId: "x", name: "b", mime: "video/mp4", size: 40 * 1024 * 1024, stream: Readable.from([]) }), /35 MB/);
-  } finally {
-    fake.close();
-  }
 });
