@@ -2,7 +2,7 @@
 import {
   $, api, closeModal, contentNo, delegate, errorText, esc, fmtDate, fmtStamp, leads, myApps, openModal, optionTags, optLabel, reloadContents, richText, sem, state, toast, typeLabel, userName, usersByRole,
 } from "./core.js";
-import { fillFootageBox, flushPendingFootage, footageBoxHtml, resetPendingFootage } from "./footage.js";
+import { fillFootageBox, flushPendingFootage, footageBoxHtml, resetPendingFootage, uploadFile } from "./footage.js";
 import { updateContent } from "./worksheet.js";
 
 const MAX_ROWS = { Video: 12, Carousel: 10, Singlepost: 2 };
@@ -28,9 +28,12 @@ function blankSheet(type) {
 }
 
 // ───────────── markup sheet ─────────────
-function cell(value, path, { read, cls = "", label } = {}) {
+function cell(value, path, { read, cls = "", label, footage = false } = {}) {
   if (read) return `<div class="read">${richText(value) || '<span class="unfilled">—</span>'}</div>`;
-  return `<textarea class="${cls}" data-path="${path}" aria-label="${esc(label ?? path)}" placeholder="Tulis di sini…">${esc(value ?? "")}</textarea>`;
+  const area = `<textarea class="${cls}" data-path="${path}" aria-label="${esc(label ?? path)}" placeholder="${footage ? "Tempel link footage…" : "Tulis di sini…"}">${esc(value ?? "")}</textarea>`;
+  if (!footage) return area;
+  // Kolom footage: tempel link, atau unggah dari komputer → otomatis ke folder Drive Apps × jenis konten.
+  return `<div class="ft-cell">${area}<label class="ft-upload" title="Unggah dari komputer"><span>⬆ Unggah dari komputer</span><input type="file" multiple hidden data-onchange="cell-upload" data-target="${path}"></label></div>`;
 }
 
 export function sheetMarkup(sh, { read = false, id } = {}) {
@@ -41,11 +44,11 @@ export function sheetMarkup(sh, { read = false, id } = {}) {
     return `<div class="sheet"><table><colgroup><col style="width:7%"><col style="width:23%"><col style="width:16%"><col style="width:17%"><col style="width:13%"><col style="width:12%"><col style="width:12%"></colgroup>
       <thead><tr><th colspan="2">${head}</th><th>FOOTAGE</th><th>ARAHAN EDITING</th><th>KETERANGAN</th><th>CAPTION TIKTOK</th><th>CAPTION INSTAGRAM</th></tr></thead><tbody>
       ${META.Video.map((label, i) => `<tr><td class="row-label">${label}</td><td>${cell(sh.meta[i], `meta.${i}`, { read, cls: "compact", label })}</td>
-        <td class="footage">${cell(sh.metaFootage?.[i], `metaFootage.${i}`, { read, cls: "compact", label: `${label} footage` })}</td>
+        <td class="footage">${cell(sh.metaFootage?.[i], `metaFootage.${i}`, { read, cls: "compact", label: `${label} footage`, footage: true })}</td>
         <td class="editing">${cell(sh.metaEditing?.[i], `metaEditing.${i}`, { read, cls: "compact", label: `${label} arahan` })}</td>
         ${i === 0 ? `<td rowspan="${total}">${cell(sh.notes, "notes", { read, cls: "long", label: "Keterangan" })}</td><td rowspan="${total}">${cell(sh.caption1, "caption1", { read, cls: "long", label: "Caption TikTok" })}</td><td rowspan="${total}">${cell(sh.caption2, "caption2", { read, cls: "long", label: "Caption Instagram" })}</td>` : ""}</tr>`).join("")}
       ${rows.map((r, i) => `<tr><td class="row-label">${esc(r.label)}</td><td>${cell(r.text, `rows.${i}.text`, { read, label: `${r.label} skrip` })}</td>
-        <td class="footage">${cell(r.footage, `rows.${i}.footage`, { read, label: `${r.label} footage` })}</td><td class="editing">${cell(r.direction, `rows.${i}.direction`, { read, label: `${r.label} arahan` })}</td></tr>`).join("")}
+        <td class="footage">${cell(r.footage, `rows.${i}.footage`, { read, label: `${r.label} footage`, footage: true })}</td><td class="editing">${cell(r.direction, `rows.${i}.direction`, { read, label: `${r.label} arahan` })}</td></tr>`).join("")}
       </tbody></table></div>`;
   }
   if (sh.type === "Carousel") {
@@ -131,7 +134,10 @@ function openEditor(content, type) {
     revision: c?.revision,
   };
   if (!draft.sheet.rows?.length) draft.sheet = blankSheet(draft.type);
-  if (!c) resetPendingFootage();
+  if (!c) {
+    resetPendingFootage();
+    uploadedIds = [];
+  }
   dirty = false;
   const saved = loadDraft();
   renderEditor(c);
@@ -143,6 +149,7 @@ function openEditor(content, type) {
   }
 }
 let pendingDraft = null;
+let uploadedIds = []; // footage yang diunggah sebelum skrip baru tersimpan
 
 function renderEditor(c) {
   const t = draft.type;
@@ -169,13 +176,13 @@ function renderEditor(c) {
       <div class="toolbar"><div class="fmt-tools" role="toolbar" aria-label="Format teks"><button type="button" class="btn mini fmt-b" data-action="fmt" data-mark="**" title="Tebal (Ctrl+B)"><b>B</b></button><button type="button" class="btn mini fmt-i" data-action="fmt" data-mark="*" title="Miring (Ctrl+I)"><i>I</i></button></div>
         ${t === "Singlepost" ? "" : `<button type="button" class="btn mini" data-action="add-stage">＋ ${t === "Video" ? "Tahapan" : "Slide"}</button><button type="button" class="btn mini" data-action="remove-stage">− Terakhir</button>`}</div>
       ${sheetMarkup(draft.sheet, { id: c ? contentNo(c) : null })}
-      ${footageBoxHtml(c, { type: t })}
+      ${t === "Video" ? "" : footageBoxHtml(c, { type: t })}
       <p id="editorError" class="form-error hidden" role="alert" style="margin-top:14px"></p>
     </div>
     <div class="foot"><button type="button" class="btn" data-action="close-modal">Batal</button><button class="btn primary" type="submit">Simpan konten</button></div></form>`,
     { wide: true },
   );
-  fillFootageBox().catch((e) => toast(errorText(e), { error: true }));
+  if (t !== "Video") fillFootageBox().catch((e) => toast(errorText(e), { error: true }));
   $("editorForm").addEventListener("submit", (e) => {
     e.preventDefault();
     saveEditor(c);
@@ -209,6 +216,8 @@ async function saveEditor(c) {
       clearDraft();
       dirty = false;
       failed = await flushPendingFootage(created.id);
+      if (uploadedIds.length) await api("POST", "/api/footage/attach", { content_id: created.id, ids: uploadedIds }).catch(() => {});
+      uploadedIds = [];
       await reloadContents();
     }
     clearDraft();
@@ -271,7 +280,7 @@ export async function openDetail(id) {
     `<div class="modalhead"><div><div class="eyebrow">${esc(optLabel(c.app))} / ${typeLabel(c.type)} / SKRIP ${esc(contentNo(c))}${c.priority && c.priority !== "Reguler" ? ` · ${esc(c.priority.toUpperCase())}` : ""}</div><h2 id="modalTitle">${esc(c.title)}</h2></div><button class="close" aria-label="Tutup" data-action="close-modal">×</button></div>
     <div class="modalbody"><div class="inline-meta">${chips.map((x) => `<span>${esc(x)}</span>`).join("")}</div>
       ${published}${sheetMarkup(c.sheet, { read: true, id: contentNo(c) })}
-      <div class="note">Catatan: ${esc(c.notes) || "Belum ada catatan produksi."}</div>${footageBoxHtml(c)}${publishForm}
+      <div class="note">Catatan: ${esc(c.notes) || "Belum ada catatan produksi."}</div>${c.type === "Video" ? "" : footageBoxHtml(c)}${publishForm}
       <details class="panel" style="margin-top:14px"><summary class="small" style="cursor:pointer">Riwayat perubahan (${c.events.length})</summary><ul class="events">
         ${c.events.map((e) => `<li><b>${esc(e.user_name ?? "—")}</b> · ${esc(FIELD_LABEL[e.field] ?? e.field)}${e.field === "sheet" || e.field === "created" ? "" : `: ${esc(eventValue(e.field, e.from_value))} → ${esc(eventValue(e.field, e.to_value))}`}<div class="small">${esc(fmtStamp(e.at))}</div></li>`).join("")}
       </ul></details></div>
@@ -280,7 +289,7 @@ export async function openDetail(id) {
     { wide: true },
   );
   draft = { id: c.id, content: c };
-  fillFootageBox().catch((e) => toast(errorText(e), { error: true }));
+  if (c.type !== "Video") fillFootageBox().catch((e) => toast(errorText(e), { error: true }));
 }
 
 // Format teks: bungkus seleksi di kotak skrip dengan **tebal** atau *miring*.
@@ -317,6 +326,39 @@ document.addEventListener("change", (e) => {
     dirty = true;
     storeDraft();
   }
+});
+
+// Unggah dari kolom FOOTAGE: hasilnya (link Drive / file server) ditambahkan ke kolom itu.
+let uploading = 0;
+delegate(document.body, "change", {
+  "cell-upload": async (el) => {
+    const files = [...el.files];
+    el.value = "";
+    if (!files.length) return;
+    const area = document.querySelector(`#editorForm textarea[data-path="${el.dataset.target}"]`);
+    const label = el.parentElement.querySelector("span");
+    const params = draft.id ? { content_id: draft.id } : { app: $("eApp").value, type: draft.type };
+    const submit = document.querySelector('#editorForm button[type="submit"]');
+    uploading++;
+    submit.disabled = true;
+    el.parentElement.classList.add("busy");
+    try {
+      for (const file of files) {
+        const res = await uploadFile(file, params, (pct) => (label.textContent = `${file.name.slice(0, 18)} · ${pct}%`));
+        if (!draft.id) uploadedIds.push(res.id);
+        const link = res.stored === "server" ? `${location.origin}${res.url}` : res.url;
+        area.value = `${area.value.trim()}${area.value.trim() ? "\n" : ""}${link}`;
+        area.dispatchEvent(new Event("input", { bubbles: true }));
+        toast(res.stored === "drive" ? `${file.name} masuk ke folder Drive` : `${file.name} terunggah (disimpan di server — folder Drive belum terhubung)`);
+      }
+    } catch (e) {
+      toast(e.message, { error: true });
+    } finally {
+      label.textContent = "⬆ Unggah dari komputer";
+      el.parentElement.classList.remove("busy");
+      if (--uploading === 0) submit.disabled = false;
+    }
+  },
 });
 
 delegate(document.body, "click", {

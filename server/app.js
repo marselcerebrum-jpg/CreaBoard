@@ -13,6 +13,7 @@ import {
   actualCounts, addDays, applyWorkflow, canSee, contentFlags, DEADLINE_DAYS, defaultSheet, editableFields, fail, HttpError,
   isDate, isHttpUrl, isLeader, jakartaDate, leads, manages, normalizeSheet, optionIndex, performance, PRIORITIES, scriptReadyErrors, titleFromSheet, TYPES,
 } from "./rules.js";
+import { folderIdFromUrl } from "./drive.js";
 
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
   ".svg": "image/svg+xml", ".png": "image/png", ".json": "application/json", ".webmanifest": "application/manifest+json", ".ico": "image/x-icon" };
@@ -27,7 +28,7 @@ const CONTENT_COLS = ["title", "app", "type", "created_date", "upload_date", "sc
   "creative_status", "qc_status", "link", "notes", "marketing_user_id", "creative_user_id", "script_ready_at",
   "talent_done_at", "creative_done_at", "link_at", "qc_at", "priority"];
 
-export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024, now = () => new Date(), secureCookies = false, trustProxy = false }) {
+export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024, drive = { enabled: false }, now = () => new Date(), secureCookies = false, trustProxy = false }) {
   // Di belakang reverse proxy (nginx), IP asli dibaca dari X-Real-IP.
   const clientIp = (req) => (trustProxy && req.headers["x-real-ip"]) || req.socket.remoteAddress;
   const today = () => jakartaDate(now());
@@ -508,12 +509,32 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
 
   // Unggah langsung dari komputer: body = isi file (bukan JSON), di-stream ke disk.
   route("POST", "/api/footage/upload", async ({ user, req, query }) => {
-    if (!uploadDir) fail(503, "Penyimpanan file belum dikonfigurasi");
     const { app, type, contentId } = await footageScope(user, query);
     const name = String(query.name ?? "file").replace(/[\\/\x00-\x1f]/g, "_").slice(0, 200) || "file";
     const size = Number(req.headers["content-length"] ?? 0);
     if (!size) fail(411, "Ukuran file tidak diketahui");
     if (size > maxUploadMb * 1024 * 1024) fail(413, `File terlalu besar (maks. ${maxUploadMb} MB)`);
+    const mime = String(req.headers["x-file-type"] || "application/octet-stream").slice(0, 100);
+
+    // Google Drive terhubung dan folder Apps × jenis konten sudah diatur → langsung ke folder itu.
+    const folder = drive.enabled ? await db.one("select url from drive_folders where app = ? and type = ?", [app, type]) : null;
+    const folderId = folderIdFromUrl(folder?.url);
+    if (folderId) {
+      let file;
+      try {
+        file = await drive.upload({ folderId, name, mime, size, stream: req });
+      } catch (e) {
+        req.resume();
+        fail(502, e.message);
+      }
+      const row = await db.one(
+        "insert into footage (content_id, app, type, kind, title, url, mime, size, uploaded_by) values (?, ?, ?, 'link', ?, ?, ?, ?, ?) returning id",
+        [contentId, app, type, name, file.url, mime, size, user.id],
+      );
+      return { id: row.id, url: file.url, title: name, stored: "drive" };
+    }
+
+    if (!uploadDir) fail(503, "Penyimpanan file belum dikonfigurasi");
     const month = today().slice(0, 7);
     await mkdir(join(uploadDir, month), { recursive: true });
     const rel = join(month, `${randomUUID()}${extname(name).slice(0, 12).toLowerCase()}`);
@@ -529,13 +550,24 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
       await unlink(abs).catch(() => {});
       fail(400, "Unggahan terputus. Coba lagi.");
     }
-    const mime = String(req.headers["x-file-type"] || "application/octet-stream").slice(0, 100);
     const row = await db.one(
       "insert into footage (content_id, app, type, kind, title, file_path, mime, size, uploaded_by) values (?, ?, ?, 'file', ?, ?, ?, ?, ?) returning id",
       [contentId, app, type, name, rel, mime, written, user.id],
     );
-    return { id: row.id };
+    return { id: row.id, url: `/api/footage/${row.id}/file`, title: name, stored: "server" };
   }, { raw: true });
+
+  // Footage yang diunggah saat skrip belum disimpan dihubungkan ke skripnya setelah tersimpan.
+  route("POST", "/api/footage/attach", async ({ user, body }) => {
+    const c = await visibleContent(db, user, Number(body.content_id) || 0, await optionIndex(db));
+    const ids = (Array.isArray(body.ids) ? body.ids : []).map(Number).filter(Number.isInteger).slice(0, 200);
+    for (const id of ids) {
+      await db.run("update footage set content_id = ? where id = ? and uploaded_by = ? and content_id is null and app = ? and type = ?", [c.id, id, user.id, c.app, c.type]);
+    }
+    return { ok: true };
+  });
+
+  route("GET", "/api/drive-status", async () => ({ connected: Boolean(drive.enabled) }));
 
   route("GET", "/api/footage/:id/file", async ({ params, res, query }) => {
     const f = await db.one("select * from footage where id = ? and kind = 'file'", [Number(params.id) || 0]);

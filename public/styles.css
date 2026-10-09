@@ -372,3 +372,11 @@ tr:hover td { background: #FBFBF8; }
 .ws-table td.open-cell, .ws-card header.open-cell { cursor: pointer; }
 .ws-table tr:hover td.open-cell { background: var(--sage-soft); }
 .ws-table td.open-cell:hover .t-title { color: var(--pine); text-decoration: underline; }
+/* Kolom FOOTAGE: tempel link + unggah dari komputer */
+.ft-cell { display: flex; flex-direction: column; height: 100%; }
+.ft-cell textarea { flex: 1; }
+.ft-upload { display: flex; align-items: center; justify-content: center; gap: 4px; margin: 0; padding: 6px 8px; border-top: 1px dashed var(--sage); background: var(--sage-soft); color: var(--pine); font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ft-upload:hover { background: var(--sage); color: var(--forest); }
+.ft-upload.busy { cursor: progress; opacity: .8; }
+.read .text-link { color: var(--pine); text-decoration: underline; word-break: break-all; }
+.warn-note { background: var(--warn-bg); color: var(--warn); }

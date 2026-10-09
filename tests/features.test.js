@@ -11,6 +11,17 @@ import { fromPglite, migrate } from "../server/db.js";
 
 const NOW = new Date("2026-10-10T03:00:00Z");
 let server, base, db, uploadDir, O;
+// Google Drive palsu: mencatat file yang "diunggah" ke folder.
+const driveUploads = [];
+const drive = {
+  enabled: true,
+  async upload({ folderId, name, mime, size, stream }) {
+    const chunks = [];
+    for await (const ch of stream) chunks.push(ch);
+    driveUploads.push({ folderId, name, mime, size, body: Buffer.concat(chunks).toString() });
+    return { id: "drv1", url: "https://drive.google.com/file/d/drv1/view" };
+  },
+};
 
 before(async () => {
   db = await migrate(fromPglite(await PGlite.create()));
@@ -21,7 +32,7 @@ before(async () => {
   O = await db.query("select * from options order by key, sort");
   const nadia = (await db.one("select id from users where username = 'nadia'")).id;
   for (const o of O.filter((x) => x.key === "app")) await db.run("insert into user_apps (user_id, app) values (?, ?)", [nadia, o.id]);
-  server = createApp({ db, publicDir: join(import.meta.dirname, "..", "public"), uploadDir, now: () => NOW });
+  server = createApp({ db, publicDir: join(import.meta.dirname, "..", "public"), uploadDir, drive, now: () => NOW });
   await new Promise((r) => server.listen(0, r));
   base = `http://localhost:${server.address().port}`;
 });
@@ -157,4 +168,28 @@ test("pembaruan otomatis: perubahan dikirim ke browser lewat /api/stream", async
   const msg = await got;
   assert.match(msg, /"what":"contents"/);
   ctrl.abort();
+});
+
+test("unggah footage otomatis masuk ke folder Drive sesuai apps × jenis konten; dihubungkan ke skrip setelah tersimpan", async () => {
+  const lm = await login("leader");
+  const mk = await login("nadia");
+  const app = O.filter((o) => o.key === "app")[1].id;
+  await lm.call("PUT", "/api/drive-folders", { app, type: "Carousel", url: "https://drive.google.com/drive/folders/FolderCarrousel01?usp=sharing" });
+  assert.deepEqual((await mk.call("GET", "/api/drive-status")).data, { connected: true });
+  // Skrip belum disimpan: unggah memakai apps & jenis dari form.
+  const bytes = new TextEncoder().encode("gambar-desain");
+  const up = await mk.call("POST", `/api/footage/upload?app=${app}&type=Carousel&name=desain.png`, bytes, { "Content-Type": "application/octet-stream", "X-Requested-With": "creaboard", "X-File-Type": "image/png" });
+  assert.equal(up.status, 200, JSON.stringify(up.data));
+  assert.equal(up.data.stored, "drive");
+  assert.equal(up.data.url, "https://drive.google.com/file/d/drv1/view");
+  assert.deepEqual(driveUploads.at(-1), { folderId: "FolderCarrousel01", name: "desain.png", mime: "image/png", size: bytes.length, body: "gambar-desain" });
+  // Setelah skrip tersimpan, footage dihubungkan ke skrip itu.
+  const c = (await mk.call("POST", "/api/contents", { type: "Carousel", app, sheet: sheetFor("Carousel", "Dengan desain") })).data;
+  assert.equal((await mk.call("POST", "/api/footage/attach", { content_id: c.id, ids: [up.data.id] })).status, 200);
+  const list = (await mk.call("GET", `/api/footage?content_id=${c.id}`)).data;
+  assert.equal(list.length, 1);
+  assert.equal(list[0].url, "https://drive.google.com/file/d/drv1/view");
+  // Tanpa folder Drive untuk kombinasi itu → tersimpan di server.
+  const local = await mk.call("POST", `/api/footage/upload?app=${app}&type=Singlepost&name=a.png`, bytes, { "Content-Type": "application/octet-stream", "X-Requested-With": "creaboard" });
+  assert.equal(local.data.stored, "server");
 });

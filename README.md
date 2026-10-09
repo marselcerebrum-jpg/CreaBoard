@@ -38,7 +38,7 @@ Ada dua Leader: **Leader Marketing** (skrip, rencana kalender, konfirmasi tayang
 - Mengisi QC setelah Link hasil ada otomatis menandai Creative Done.
 - **Pembaruan otomatis** — perubahan dari akun lain langsung tampil tanpa refresh (Server-Sent Events).
 - **Pencarian** mencakup judul dan seluruh isi skrip/brief.
-- **Footage** — diisi langsung di form skrip (dan di detail skrip): unggah file dari komputer atau tempel link Google Drive. Semua footage terkumpul otomatis di **Setting → Link footage**, dikelompokkan per platform (Apps) × jenis konten; di sana Leader mengatur link folder Drive tiap kelompok.
+- **Footage** — skrip Video: tiap baris kolom FOOTAGE punya kolom tempel link dan tombol **Unggah dari komputer**; Carrousel/Singlepost: kotak footage di bawah skrip. File yang diunggah otomatis masuk ke folder Google Drive sesuai Apps × jenis konten (diatur Leader di **Setting → Link footage**), dan link-nya ditulis ke kolom footage. Bila Drive belum terhubung, file disimpan di server.
 
 Untuk mengosongkan data lokal: hentikan server, hapus folder `data/`, lalu jalankan lagi.
 
@@ -55,6 +55,8 @@ Untuk mengosongkan data lokal: hentikan server, hapus folder `data/`, lalu jalan
 | `TRUST_PROXY` | – | Isi `1` bila di belakang nginx (IP asli dari `X-Real-IP` untuk pembatas login) |
 | `UPLOAD_DIR` | `data/uploads` | Folder file footage yang diunggah (di Docker: volume `creaboard_uploads`) |
 | `MAX_UPLOAD_MB` | `1024` | Batas ukuran satu file footage |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REFRESH_TOKEN` | – | Unggah footage ke Google Drive atas nama akun Google (lihat di bawah) |
+| `GOOGLE_SERVICE_ACCOUNT_FILE` | – | Alternatif: service account, khusus folder di Shared Drive |
 
 ## Deploy di VPS (Docker + Supabase self-hosted)
 
@@ -71,6 +73,13 @@ Untuk mengosongkan data lokal: hentikan server, hapus folder `data/`, lalu jalan
 
 Update: `cd /opt/creaboard && git pull && docker compose up -d --build`.
 
+## Menghubungkan Google Drive
+
+1. Di [Google Cloud Console](https://console.cloud.google.com/): buat project → aktifkan **Google Drive API** → **OAuth consent screen** (External, tambahkan email Anda sebagai test user, lalu *Publish app* agar token tidak kedaluwarsa tiap 7 hari) → **Credentials → Create OAuth client ID → Desktop app**.
+2. Di komputer sendiri: `GOOGLE_CLIENT_ID=… GOOGLE_CLIENT_SECRET=… node scripts/google-auth.js`, buka link-nya, login dengan akun Google pemilik folder, lalu salin `GOOGLE_REFRESH_TOKEN` yang dicetak.
+3. Isi ketiga nilai di `/opt/creaboard/.env`, lalu `docker compose up -d`.
+4. Di **Setting → Link footage**, isi link folder Drive tiap platform × jenis konten (folder milik akun tadi, atau dibagikan sebagai Editor ke akun itu).
+
 ## Operasional
 
 - **Backup:** data ada di schema `creaboard` pada Postgres `supabase-content` — ikut backup database Supabase, atau `pg_dump -n creaboard`. File footage ada di volume Docker `creaboard_uploads`.
@@ -79,9 +88,9 @@ Update: `cd /opt/creaboard && git pull && docker compose up -d --build`.
 ## Struktur
 
 ```
-server/   index.js (entry) · app.js (API) · rules.js (aturan alur & izin) · auth.js · db.js
+server/   index.js (entry) · app.js (API) · rules.js (aturan alur & izin) · auth.js · db.js · drive.js (unggah ke Google Drive)
 public/   index.html · styles.css · js/ (core, main, worksheet, editor, calendar, team, settings, footage)
-scripts/  seed-demo.js
+scripts/  seed-demo.js · google-auth.js (ambil refresh token Google Drive)
 tests/    api.test.js · features.test.js   →  npm test
 ```
 

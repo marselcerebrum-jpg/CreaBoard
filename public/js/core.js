@@ -166,9 +166,10 @@ export async function reloadContents() {
 /** Nomor skrip per jenis konten: tiap jenis (Video, Carrousel, Singlepost) mulai dari 1. */
 export const contentNo = (c) => String(c.type_no ?? c.id);
 
-/** Teks skrip dengan **tebal** dan *miring* → HTML aman (di-escape lebih dulu). */
+/** Teks skrip dengan **tebal**, *miring*, dan link yang bisa diklik → HTML aman (di-escape lebih dulu). */
 export function richText(s) {
   return esc(s)
+    .replace(/https?:\/\/[^\s<]+/g, (u) => `<a href="${u}" target="_blank" rel="noopener noreferrer" class="text-link">${u.length > 48 ? `${u.slice(0, 45)}…` : u}</a>`)
     .replace(/\*\*(.+?)\*\*/gs, "<strong>$1</strong>")
     .replace(/(^|[^*])\*(?!\s)(.+?)\*(?!\*)/gs, "$1<em>$2</em>");
 }

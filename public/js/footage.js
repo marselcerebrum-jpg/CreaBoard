@@ -1,4 +1,6 @@
-// Footage: unggah dari komputer atau link Google Drive, diisi langsung di form skrip.
+// Footage: unggah dari komputer atau link Google Drive, diisi langsung di form skrip
+// (Video: di kolom FOOTAGE tiap baris; Carrousel/Singlepost: kotak footage di bawah skrip).
+// File yang diunggah otomatis masuk ke folder Drive Apps × jenis konten bila Drive terhubung.
 // Rekap per platform (Apps) × jenis konten beserta link folder Drive ada di Setting → Link footage.
 import {
   $, api, delegate, errorText, esc, fmtDate, fmtSize, isLeader, myApps, optionsFor, optLabel, state, toast, TYPES, typeLabel,
@@ -14,7 +16,7 @@ function itemHtml(f, { withContent = false } = {}) {
   const open = f.kind === "link" ? f.url : `/api/footage/${f.id}/file`;
   const content = withContent && f.content_no ? `${typeLabel(f.type)} ${f.content_no} · ${esc(f.content_title ?? "")} · ` : "";
   return `<li class="footage-item">
-    <span class="badge ${f.kind === "link" ? "b-link" : "b-file"}">${f.kind === "link" ? "Link" : "File"}</span>
+    <span class="badge ${f.kind === "link" ? "b-link" : "b-file"}">${f.kind === "file" ? "File" : /drive\.google\.com/.test(f.url) ? "Drive" : "Link"}</span>
     <div class="fi-main"><a href="${esc(open)}" target="_blank" rel="noopener noreferrer">${esc(f.title)}</a>
       <div class="t-meta">${content}${esc(f.uploaded_by_name ?? "—")} · ${fmtDate(f.created_at?.slice(0, 10))}${f.size ? ` · ${fmtSize(f.size)}` : ""}</div></div>
     <div class="fi-actions">${f.kind === "file" ? `<a class="btn mini" href="/api/footage/${f.id}/file?download=1">Unduh</a>` : ""}
@@ -78,7 +80,7 @@ export async function flushPendingFootage(contentId) {
       if (p.kind === "link") await api("POST", "/api/footage", { content_id: contentId, url: p.url, title: p.title });
       else {
         bar?.classList.remove("hidden");
-        await uploadOne(p.file, { content_id: contentId }, bar);
+        await uploadOne(p.file, { content_id: contentId }, progressBar(bar, p.file));
       }
     } catch {
       failed++;
@@ -88,7 +90,19 @@ export async function flushPendingFootage(contentId) {
   return failed;
 }
 
-function uploadOne(file, params, bar) {
+/** Progress bar kotak footage → callback persen. */
+function progressBar(bar, file) {
+  return (pct) => {
+    if (!bar) return;
+    bar.querySelector("i").style.width = `${pct}%`;
+    bar.querySelector("span").textContent = `${file.name} · ${pct}%`;
+  };
+}
+
+/** Unggah satu file; hasil: { id, url, title, stored: "drive" | "server" }. */
+export const uploadFile = (file, params, onProgress = () => {}) => uploadOne(file, params, onProgress);
+
+function uploadOne(file, params, onProgress) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `/api/footage/upload?${new URLSearchParams({ ...params, name: file.name })}`);
@@ -96,10 +110,7 @@ function uploadOne(file, params, bar) {
     xhr.setRequestHeader("X-Requested-With", "creaboard");
     xhr.setRequestHeader("X-File-Type", file.type || "application/octet-stream");
     xhr.upload.onprogress = (e) => {
-      if (!e.lengthComputable || !bar) return;
-      const pct = Math.round((e.loaded / e.total) * 100);
-      bar.querySelector("i").style.width = `${pct}%`;
-      bar.querySelector("span").textContent = `${file.name} · ${pct}%`;
+      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
     };
     xhr.onload = () => {
       let data = {};
@@ -145,14 +156,17 @@ export async function renderFootageLibrary(root) {
   const query = new URLSearchParams();
   if (filterApp) query.set("app", filterApp);
   if (filterType) query.set("type", filterType);
-  const [items, folders] = await Promise.all([api("GET", `/api/footage?${query}`), api("GET", "/api/drive-folders")]);
+  const [items, folders, status] = await Promise.all([api("GET", `/api/footage?${query}`), api("GET", "/api/drive-folders"), api("GET", "/api/drive-status")]);
   const groups = [];
   for (const a of apps.filter((o) => !filterApp || o.id === filterApp)) {
     for (const t of TYPES.filter((x) => !filterType || x === filterType)) {
       groups.push({ a, t, list: items.filter((f) => f.app === a.id && f.type === t), folder: folders.find((x) => x.app === a.id && x.type === t) });
     }
   }
-  root.innerHTML = `<div class="filters">
+  root.innerHTML = `<div class="note ${status.connected ? "" : "warn-note"}">${status.connected
+      ? "Google Drive terhubung. File yang diunggah dari form skrip otomatis masuk ke folder di bawah sesuai platform dan jenis kontennya. Pastikan tiap folder dibagikan (Editor) ke akun Google CreaBoard."
+      : "Google Drive belum terhubung ke server, jadi file yang diunggah sementara disimpan di server CreaBoard. Link folder di bawah tetap dipakai begitu Drive dihubungkan."}</div>
+    <div class="filters">
       <div class="field"><label for="ftApp">Platform</label><select id="ftApp" data-onchange="footage-filter" data-key="app"><option value="">Semua platform</option>${apps.map((o) => `<option value="${esc(o.id)}" ${o.id === filterApp ? "selected" : ""}>${esc(o.label)}</option>`).join("")}</select></div>
       <div class="field"><label for="ftType">Jenis konten</label><select id="ftType" data-onchange="footage-filter" data-key="type"><option value="">Semua</option>${TYPES.map((t) => `<option value="${t}" ${t === filterType ? "selected" : ""}>${typeLabel(t)}</option>`).join("")}</select></div>
     </div>
@@ -192,7 +206,7 @@ delegate(document.body, "change", {
     const bar = el.closest(".footage-add").querySelector(".upload-progress");
     bar.classList.remove("hidden");
     try {
-      for (const f of files) await uploadOne(f, { content_id: boxContentId }, bar);
+      for (const f of files) await uploadOne(f, { content_id: boxContentId }, progressBar(bar, f));
       toast(`${files.length} file terunggah`);
     } catch (e) {
       toast(e.message, { error: true });
