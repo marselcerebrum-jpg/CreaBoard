@@ -263,11 +263,10 @@ export async function renderDashboard(root) {
   const target = TYPES.reduce((x, t) => x + n.byType[t].target, 0);
   const actual = TYPES.reduce((x, t) => x + n.byType[t].actual, 0);
   const rate = pctOf(n.rate.value, target);
-  // Header: subjudul, pilihan bulan, tombol buat skrip (Marketing).
+  // Header: subjudul dan pilihan bulan.
   $id("pageSub").textContent = "Perencanaan dan aktual konten dalam satu tempat.";
   $id("pageSub").classList.remove("hidden");
-  $id("headTools").innerHTML = `<label class="month-pick">${icon("calendar", 16)}<input type="month" value="${dashMonth}" data-onchange="dash-month" aria-label="Bulan"></label>
-    ${state.me.role === "Marketing" ? `<button class="btn primary big" data-action="create">${icon("plus", 18)} Buat skrip</button>` : ""}`;
+  $id("headTools").innerHTML = `<label class="month-pick">${icon("calendar", 16)}<input type="month" value="${dashMonth}" data-onchange="dash-month" aria-label="Bulan"></label>`;
 
   const kpi = (ic, title, value, sub) => `<div class="kpi"><span class="kpi-ico">${icon(ic, 24)}</span><div><span class="kpi-title">${title}</span><b>${value}</b><small>${sub}</small></div></div>`;
   const kpis = `<div class="kpi-row">

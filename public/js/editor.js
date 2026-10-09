@@ -300,7 +300,7 @@ function renderEditor(c) {
       <p id="editorError" class="form-error hidden" role="alert"></p>
     </div>
     <footer class="ck-foot"><span class="small">Draft tersimpan di browser ini</span>
-      <div class="ck-actions"><button type="button" class="btn" data-action="ck-export">Unduh JSON</button><button class="btn primary" type="submit">Simpan konten</button></div></footer>
+      <div class="ck-actions"><button class="btn primary" type="submit">Simpan konten</button></div></footer>
     </form>`,
     { full: true, keepScroll: Boolean(fieldsBefore) },
   );
@@ -588,19 +588,6 @@ delegate(document.body, "click", {
     const links = boxList(box, "links");
     links.splice(Number(el.dataset.index), 1);
     setBoxLinks(box, links);
-  },
-  "ck-export": () => {
-    captureSheet();
-    const data = { type: draft.type, app: $("eApp").value, upload_date: $("eUpload").value, priority: $("ePriority").value, sheet: draft.sheet };
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
-    a.download = `skrip-${(draft.sheet.title || "konten").replace(/[^\w-]+/g, "-").slice(0, 40)}.json`;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => {
-      URL.revokeObjectURL(a.href);
-      a.remove();
-    }, 1000);
   },
   "ft2-remove": (el) => {
     const box = el.closest(".ft2");
