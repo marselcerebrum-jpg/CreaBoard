@@ -1,35 +1,43 @@
-// Setting: ganti password (semua), dropdown, akun & role + pembagian apps, target KPI (Leader).
-import { $, api, closeModal, delegate, errorText, esc, fmtDate, isLeader, openModal, optionsFor, optLabel, state, toast, TYPES, typeLabel, addDays } from "./core.js";
+// Halaman Setting: akun & role + pembagian apps, target KPI, dropdown (Leader), link footage, ganti password.
+import { $, api, delegate, errorText, esc, fmtDate, isLeader, optionsFor, optLabel, state, toast, TYPES, typeLabel, addDays } from "./core.js";
+import { renderFootageLibrary } from "./footage.js";
 
-const head = (title) =>
-  `<div class="modalhead"><h2 id="modalTitle">${title}</h2><button class="close" aria-label="Tutup" data-action="close-modal">×</button></div>`;
-const back = '<button type="button" class="btn" data-action="settings-home">← Kembali</button>';
-const changed = () => window.dispatchEvent(new Event("cs:changed"));
+const head = (title) => `<h2 class="settings-title">${title}</h2>`;
+const body = (html) => ($("settingsBody").innerHTML = html);
 
 /** Pembagian apps hanya untuk staff Marketing dan diatur Leader Marketing. */
 const hasApps = (position, role) => position === "Staff" && role === "Marketing";
 const manages = (position, role) => isLeader() && state.me.role === "Marketing" && hasApps(position, role);
 const usersTitle = () => (state.me.role === "Marketing" ? "Akun, role & apps" : "Akun & role");
 
-export function openSettings() {
-  openModal(`${head("Setting")}<div class="modalbody"><div class="setting-grid">
-    <button class="setting-tile" data-action="settings-password"><b>Ganti password</b></button>
-    ${isLeader() ? `<button class="setting-tile" data-action="settings-users"><b>${usersTitle()}</b></button>
-    <button class="setting-tile" data-action="settings-kpi"><b>Target KPI</b></button>
-    <button class="setting-tile" data-action="settings-options"><b>Atur dropdown</b></button>` : ""}
-    </div></div>`);
+const SECTIONS = {
+  users: { title: () => usersTitle(), leader: true, show: () => showUsers() },
+  kpi: { title: () => "Target KPI", leader: true, show: () => showKpi() },
+  options: { title: () => "Atur dropdown", leader: true, show: () => showOptions(optKey) },
+  footage: { title: () => "Link footage", show: () => showFootage() },
+  password: { title: () => "Ganti password", show: () => showPassword() },
+};
+let section = "";
+
+export async function renderSettings(root) {
+  const list = Object.entries(SECTIONS).filter(([, s]) => !s.leader || isLeader());
+  if (!list.some(([k]) => k === section)) section = list[0][0];
+  root.innerHTML = `<div class="settings-nav" role="tablist">${list
+    .map(([k, s]) => `<button class="btn ${k === section ? "active" : ""}" role="tab" aria-selected="${k === section}" data-action="settings-section" data-section="${k}">${esc(s.title())}</button>`)
+    .join("")}</div><div id="settingsBody"></div>`;
+  await SECTIONS[section].show();
 }
 
 function showPassword() {
-  openModal(`${head("Ganti password")}<form id="pwForm"><div class="modalbody"><div class="grid">
+  body(`<form id="pwForm" class="panel narrow">${head("Ganti password")}<div class="grid">
     <div class="field"><label for="pwOld">Password lama</label><input id="pwOld" type="password" autocomplete="current-password" required></div>
     <div class="field"><label for="pwNew">Password baru (min. 8 karakter)</label><input id="pwNew" type="password" autocomplete="new-password" minlength="8" required></div>
-    </div></div><div class="foot">${back}<button class="btn primary">Simpan password</button></div></form>`);
+    </div><button class="btn primary" style="margin-top:14px">Simpan password</button></form>`);
   $("pwForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     try {
       await api("POST", "/api/me/password", { current: $("pwOld").value, next: $("pwNew").value });
-      closeModal();
+      $("pwForm").reset();
       toast("Password diperbarui");
     } catch (err) {
       toast(errorText(err), { error: true });
@@ -52,14 +60,13 @@ function showOptions(key = optKey) {
 function renderOptions() {
   const withCategory = HAS_CATEGORY.has(optKey);
   const names = optDraft.map((o) => o.label.trim()).filter(Boolean);
-  openModal(`${head("Atur dropdown")}<div class="modalbody">
+  body(`<div class="panel">${head("Atur dropdown")}
     <div class="settings-tabs">${Object.entries(KEYS).map(([k, n]) => `<button class="btn mini ${k === optKey ? "active" : ""}" data-action="opt-tab" data-key="${k}">${n}</button>`).join("")}</div>
     ${withCategory ? '<div class="setting-cols"><span>Nama pilihan</span><span>Kategori proses</span></div>' : ""}
     <div>${optDraft.map((o, i) => `<div class="settingrow"><input aria-label="Nama pilihan ${i + 1}" data-opt-label="${i}" data-onchange="opt-rename" value="${esc(o.label)}" maxlength="60">
       ${withCategory ? `<select aria-label="Kategori ${i + 1}" data-opt-cat="${i}">${names.map((n) => `<option value="${esc(n)}" ${n === o.category ? "selected" : ""}>${esc(n)}</option>`).join("")}</select>` : ""}
       <button class="btn mini" data-action="opt-remove" data-index="${i}">Hapus</button></div>`).join("")}</div>
-    <button class="btn mini" style="margin-top:14px" data-action="opt-add">＋ Tambah pilihan</button></div>
-    <div class="foot">${back}<button class="btn primary" data-action="opt-save">Simpan dropdown</button></div>`);
+    <div class="settings-actions"><button class="btn mini" data-action="opt-add">＋ Tambah pilihan</button><button class="btn primary" data-action="opt-save">Simpan dropdown</button></div></div>`);
 }
 function captureOptions() {
   document.querySelectorAll("[data-opt-cat]").forEach((el) => (optDraft[Number(el.dataset.optCat)].category = el.value));
@@ -88,8 +95,7 @@ function newUserApps() {
 
 async function showUsers() {
   const users = await api("GET", "/api/users");
-  openModal(`${head(usersTitle())}<div class="modalbody">
-    <form id="userForm" class="panel"><h3 style="margin-top:0">Tambah akun</h3><div class="grid">
+  body(`<form id="userForm" class="panel">${head("Tambah akun")}<div class="grid">
       <div class="field"><label for="uName">Nama</label><input id="uName" required maxlength="100"></div>
       <div class="field"><label for="uUser">Username</label><input id="uUser" required pattern="[a-zA-Z0-9._\\-]{3,40}" autocomplete="off"></div>
       <div class="field"><label for="uPos">Posisi</label><select id="uPos" data-onchange="new-user-scope"><option>Staff</option><option>Leader</option></select></div>
@@ -110,7 +116,7 @@ async function showUsers() {
         <td>${u.id === state.me.id ? "Aktif" : `<select data-onchange="user-field" data-id="${u.id}" data-field="active"><option value="1" ${u.active ? "selected" : ""}>Aktif</option><option value="0" ${u.active ? "" : "selected"}>Nonaktif</option></select>`}</td>
         <td><button class="btn mini" data-action="user-reset" data-id="${u.id}" data-name="${esc(u.name)}">Reset password</button></td></tr>`;
       }).join("")}
-    </tbody></table></div></div><div class="foot">${back}</div>`, { wide: true });
+    </tbody></table></div>`);
   newUserApps();
   $("userForm").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -131,6 +137,12 @@ async function refreshBootstrap() {
   Object.assign(state, { users: b.users, options: b.options });
 }
 
+// ───────────── link footage ─────────────
+async function showFootage() {
+  body('<div id="footageLibrary"></div>');
+  await renderFootageLibrary($("footageLibrary"));
+}
+
 // ───────────── KPI ─────────────
 let kpiMonth = "";
 async function showKpi() {
@@ -138,8 +150,7 @@ async function showKpi() {
   const list = await api("GET", `/api/kpis?month=${kpiMonth}`);
   // Leader hanya mengatur target tim yang dipimpinnya.
   const staff = state.users.filter((u) => u.active && u.position === "Staff" && u.role === state.me.role);
-  openModal(`${head("Target KPI")}<div class="modalbody">
-    <form id="kpiForm" class="panel"><div class="grid">
+  body(`<form id="kpiForm" class="panel">${head("Target KPI")}<div class="grid">
       <div class="field"><label for="kStaff">Staff</label><select id="kStaff" required>${staff.map((u) => `<option value="${u.id}">${esc(u.name)}</option>`).join("")}</select></div>
       <div class="field"><label for="kApp">Apps</label><select id="kApp">${optionsFor("app").map((o) => `<option value="${esc(o.id)}">${esc(o.label)}</option>`).join("")}</select></div>
       <div class="field"><label for="kType">Jenis konten</label><select id="kType">${TYPES.map((t) => `<option value="${t}">${typeLabel(t)}</option>`).join("")}</select></div>
@@ -150,13 +161,12 @@ async function showKpi() {
     <div class="filters"><div class="field" style="max-width:200px"><label for="kMonth">Bulan upload</label><input id="kMonth" type="month" value="${kpiMonth}" data-onchange="kpi-month"></div></div>
     <div class="panel" style="overflow:auto"><table><thead><tr><th>Staff</th><th>Apps</th><th>Jenis</th><th>Pengerjaan</th><th>Upload</th><th>Target</th><th></th></tr></thead><tbody>
       ${list.map((k) => `<tr><td>${esc(k.user_name)}</td><td>${esc(optLabel(k.app))}</td><td>${typeLabel(k.type)}</td><td>${fmtDate(k.work_date)}</td><td>${fmtDate(k.upload_date)}</td><td>${k.amount}</td><td><button class="btn mini danger" data-action="kpi-delete" data-id="${k.id}">Hapus</button></td></tr>`).join("") || '<tr><td colspan="7" class="empty">Belum ada target bulan ini.</td></tr>'}
-    </tbody></table></div></div><div class="foot">${back}</div>`);
+    </tbody></table></div>`);
   $("kpiForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     try {
       await api("POST", "/api/kpis", { user_id: Number($("kStaff").value), app: $("kApp").value, type: $("kType").value, amount: Number($("kAmount").value), work_date: $("kWork").value, upload_date: $("kUpload").value });
       toast("Target KPI disimpan");
-      changed();
       showKpi();
     } catch (err) {
       toast(errorText(err), { error: true });
@@ -165,11 +175,10 @@ async function showKpi() {
 }
 
 delegate(document.body, "click", {
-  "settings-home": () => openSettings(),
-  "settings-password": () => showPassword(),
-  "settings-options": () => showOptions("app"),
-  "settings-users": () => showUsers().catch((e) => toast(errorText(e), { error: true })),
-  "settings-kpi": () => showKpi().catch((e) => toast(errorText(e), { error: true })),
+  "settings-section": (el) => {
+    section = el.dataset.section;
+    window.dispatchEvent(new Event("cs:changed"));
+  },
   "opt-tab": (el) => {
     captureOptions();
     showOptions(el.dataset.key);
@@ -193,7 +202,6 @@ delegate(document.body, "click", {
     try {
       state.options = await api("PUT", `/api/options/${optKey}`, { options: optDraft });
       toast("Pilihan dropdown diperbarui");
-      changed();
       showOptions(optKey);
     } catch (e) {
       toast(errorText(e), { error: true });
@@ -212,7 +220,6 @@ delegate(document.body, "click", {
   "kpi-delete": async (el) => {
     if (!confirm("Hapus target ini?")) return;
     await api("DELETE", `/api/kpis/${el.dataset.id}`, {}).catch((e) => toast(errorText(e), { error: true }));
-    changed();
     showKpi();
   },
 });
@@ -243,7 +250,6 @@ delegate(document.body, "change", {
       await api("PUT", `/api/users/${userId}/apps`, { apps });
       await refreshBootstrap();
       toast("Apps disimpan");
-      changed();
     } catch (e) {
       el.checked = !el.checked;
       toast(errorText(e), { error: true });

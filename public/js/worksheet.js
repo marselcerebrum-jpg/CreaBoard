@@ -95,33 +95,7 @@ function editorSelect(c) {
 }
 const none = '<span class="badge b-muted">Tidak perlu</span>';
 
-/** Instruksi tahap berikutnya: siapa mengerjakan apa. */
-function nextStep(c) {
-  const f = c.flags;
-  if (f.published) return ["Selesai", "Sudah tayang", "done"];
-  if (sem(c.script_status) !== "Ready") return ["Marketing", "Lengkapi skrip, lalu ubah Info skrip ke Ready", "todo"];
-  if (c.type === "Video" && sem(c.talent_status) === "Belum") return ["Talent", "Lakukan take, lalu ubah Status take ke Done", "todo"];
-  if (sem(c.qc_status) === "Revisi") return ["Creative", "Perbaiki sesuai catatan QC, lalu tempel link hasil baru", "warn"];
-  if (sem(c.creative_status) !== "Done") {
-    if (!c.creative_user_id) return ["Leader Creative", "Tentukan editor di kolom Editor", "todo"];
-    return ["Creative", "Edit konten, lalu tempel Link hasil", "todo"];
-  }
-  if (sem(c.qc_status) === "") return ["Marketing", "Cek hasil, lalu ubah QC ke Done atau Revisi", "todo"];
-  return ["Marketing", "Upload ke channel, lalu klik nomor → Konfirmasi tayang", "todo"];
-}
-
 const CELLS = {
-  next: {
-    head: "Langkah berikutnya",
-    html: (c) => {
-      const [who, what, tone] = nextStep(c);
-      return `<div class="next-step ns-${tone}"><b>${esc(who)}</b><span>${esc(what)}</span></div>`;
-    },
-  },
-  footage: {
-    head: "Footage",
-    html: (c) => `<button class="footage-btn" data-action="footage-open" data-id="${c.id}" aria-label="Footage #${esc(contentNo(c))}">${c.footage_count ? `${c.footage_count} file/link` : "＋ Tambah"}</button>`,
-  },
   script: { head: "Info skrip", html: (c) => select(c, "script_status", "script") + stamp(c.script_ready_at) },
   talentName: { head: "Talent", html: (c) => (c.type === "Video" ? select(c, "talent_name", "talentName", "Belum ditentukan") : none) },
   take: { head: "Status take", html: (c) => (c.type === "Video" ? select(c, "talent_status", "talent") + stamp(c.talent_done_at) : none) },
@@ -151,9 +125,9 @@ const CELLS = {
 };
 // Urutan kolom mengikuti pekerjaan tiap peran: kolom tugas sendiri di depan.
 const ORDER = {
-  default: ["next", "script", "talentName", "take", "editor", "creative", "link", "qc", "upload", "footage", "notes"],
-  Creative: ["next", "creative", "link", "qc", "upload", "footage", "editor", "script", "talentName", "take", "notes"],
-  Talent: ["next", "take", "talentName", "footage", "upload", "script", "editor", "creative", "link", "qc", "notes"],
+  default: ["script", "talentName", "take", "editor", "creative", "link", "qc", "upload", "notes"],
+  Creative: ["creative", "link", "qc", "upload", "editor", "script", "talentName", "take", "notes"],
+  Talent: ["take", "talentName", "upload", "script", "editor", "creative", "link", "qc", "notes"],
 };
 const columns = () => ORDER[state.me.role] ?? ORDER.default;
 
@@ -165,13 +139,13 @@ function titleCell(c) {
 function tableHtml(rows) {
   const cols = columns();
   const body = rows.length
-    ? rows.map((c) => `<tr><td class="sticky-a"><button class="number" data-action="detail" data-id="${c.id}" aria-label="Buka skrip ${esc(contentNo(c))}">${esc(contentNo(c))}</button></td><td class="sticky-b">${titleCell(c)}</td>${cols.map((k) => `<td>${CELLS[k].html(c)}</td>`).join("")}</tr>`).join("")
+    ? rows.map((c) => `<tr><td class="sticky-a open-cell" data-action="detail" data-id="${c.id}"><button class="number" aria-label="Buka skrip ${esc(c.title)}">${esc(contentNo(c))}</button></td><td class="sticky-b open-cell" data-action="detail" data-id="${c.id}" title="Buka skrip">${titleCell(c)}</td>${cols.map((k) => `<td>${CELLS[k].html(c)}</td>`).join("")}</tr>`).join("")
     : `<tr><td colspan="${cols.length + 2}" class="empty">Tidak ada konten yang cocok. Ubah filter atau buat konten baru.</td></tr>`;
   const cards = rows.length
-    ? rows.map((c) => `<article class="ws-card"><header><button class="number" data-action="detail" data-id="${c.id}">${esc(contentNo(c))}</button><div>${titleCell(c)}</div></header>
+    ? rows.map((c) => `<article class="ws-card"><header class="open-cell" data-action="detail" data-id="${c.id}"><button class="number">${esc(contentNo(c))}</button><div>${titleCell(c)}</div></header>
         <dl>${cols.map((k) => `<div><dt>${CELLS[k].head}</dt><dd>${CELLS[k].html(c)}</dd></div>`).join("")}</dl></article>`).join("")
     : '<p class="empty">Tidak ada konten yang cocok.</p>';
-  return `<div class="tablewrap ws-table"><table><thead><tr><th class="sticky-a">No.</th><th class="sticky-b">Konten</th>${cols.map((k) => `<th>${CELLS[k].head}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div>
+  return `<div class="tablewrap ws-table"><table><thead><tr><th class="sticky-a">No.</th><th class="sticky-b">USP/Keyword</th>${cols.map((k) => `<th>${CELLS[k].head}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div>
     <div class="ws-cards">${cards}</div>`;
 }
 
@@ -262,7 +236,7 @@ export async function updateContent(id, changes) {
 
 const noOf = (id) => {
   const c = state.contents.find((x) => x.id === id);
-  return c ? contentNo(c) : `#${id}`;
+  return c ? `${typeLabel(c.type)} ${contentNo(c)}` : `#${id}`;
 };
 
 function describe(field, value) {

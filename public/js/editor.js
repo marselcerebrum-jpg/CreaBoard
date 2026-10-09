@@ -2,7 +2,7 @@
 import {
   $, api, closeModal, contentNo, delegate, errorText, esc, fmtDate, fmtStamp, leads, myApps, openModal, optionTags, optLabel, reloadContents, richText, sem, state, toast, typeLabel, userName, usersByRole,
 } from "./core.js";
-import { openFootageModal } from "./footage.js";
+import { fillFootageBox, flushPendingFootage, footageBoxHtml, resetPendingFootage } from "./footage.js";
 import { updateContent } from "./worksheet.js";
 
 const MAX_ROWS = { Video: 12, Carousel: 10, Singlepost: 2 };
@@ -131,6 +131,7 @@ function openEditor(content, type) {
     revision: c?.revision,
   };
   if (!draft.sheet.rows?.length) draft.sheet = blankSheet(draft.type);
+  if (!c) resetPendingFootage();
   dirty = false;
   const saved = loadDraft();
   renderEditor(c);
@@ -168,11 +169,13 @@ function renderEditor(c) {
       <div class="toolbar"><div class="fmt-tools" role="toolbar" aria-label="Format teks"><button type="button" class="btn mini fmt-b" data-action="fmt" data-mark="**" title="Tebal (Ctrl+B)"><b>B</b></button><button type="button" class="btn mini fmt-i" data-action="fmt" data-mark="*" title="Miring (Ctrl+I)"><i>I</i></button></div>
         ${t === "Singlepost" ? "" : `<button type="button" class="btn mini" data-action="add-stage">＋ ${t === "Video" ? "Tahapan" : "Slide"}</button><button type="button" class="btn mini" data-action="remove-stage">− Terakhir</button>`}</div>
       ${sheetMarkup(draft.sheet, { id: c ? contentNo(c) : null })}
+      ${footageBoxHtml(c, { type: t })}
       <p id="editorError" class="form-error hidden" role="alert" style="margin-top:14px"></p>
     </div>
     <div class="foot"><button type="button" class="btn" data-action="close-modal">Batal</button><button class="btn primary" type="submit">Simpan konten</button></div></form>`,
     { wide: true },
   );
+  fillFootageBox().catch((e) => toast(errorText(e), { error: true }));
   $("editorForm").addEventListener("submit", (e) => {
     e.preventDefault();
     saveEditor(c);
@@ -192,6 +195,9 @@ async function saveEditor(c) {
     ...($("eOwner") ? { marketing_user_id: Number($("eOwner").value) } : {}),
   };
   const errorEl = $("editorError");
+  const submit = document.querySelector('#editorForm button[type="submit"]');
+  let failed = 0;
+  submit.disabled = true; // cegah skrip ganda saat footage masih diunggah
   try {
     if (!draft.sheet.meta[0]?.trim()) throw new Error(draft.type === "Video" ? "Kata kunci perlu diisi." : draft.type === "Carousel" ? "Tema carrousel perlu diisi." : "Judul / hook perlu diisi.");
     if (c) {
@@ -199,18 +205,23 @@ async function saveEditor(c) {
       for (const [k, v] of Object.entries(fields)) if (c.editable.includes(k) && v !== c[k]) changes[k] = v;
       await updateContent(c.id, changes);
     } else {
-      await api("POST", "/api/contents", { type: draft.type, sheet: draft.sheet, ...fields });
+      const created = await api("POST", "/api/contents", { type: draft.type, sheet: draft.sheet, ...fields });
+      clearDraft();
+      dirty = false;
+      failed = await flushPendingFootage(created.id);
       await reloadContents();
     }
     clearDraft();
     dirty = false;
     closeModal();
-    toast("Skrip tersimpan. Dashboard sudah diperbarui.");
+    if (failed) toast(`Skrip tersimpan, tetapi ${failed} footage gagal diunggah. Tambahkan lagi dari detail skrip.`, { error: true });
+    else toast("Skrip tersimpan. Dashboard sudah diperbarui.");
     window.dispatchEvent(new Event("cs:changed"));
   } catch (e) {
     errorEl.textContent = errorText(e);
     errorEl.classList.remove("hidden");
     errorEl.scrollIntoView({ block: "nearest" });
+    submit.disabled = false;
   }
 }
 
@@ -260,15 +271,16 @@ export async function openDetail(id) {
     `<div class="modalhead"><div><div class="eyebrow">${esc(optLabel(c.app))} / ${typeLabel(c.type)} / SKRIP ${esc(contentNo(c))}${c.priority && c.priority !== "Reguler" ? ` · ${esc(c.priority.toUpperCase())}` : ""}</div><h2 id="modalTitle">${esc(c.title)}</h2></div><button class="close" aria-label="Tutup" data-action="close-modal">×</button></div>
     <div class="modalbody"><div class="inline-meta">${chips.map((x) => `<span>${esc(x)}</span>`).join("")}</div>
       ${published}${sheetMarkup(c.sheet, { read: true, id: contentNo(c) })}
-      <div class="note">Catatan: ${esc(c.notes) || "Belum ada catatan produksi."}</div>${publishForm}
+      <div class="note">Catatan: ${esc(c.notes) || "Belum ada catatan produksi."}</div>${footageBoxHtml(c)}${publishForm}
       <details class="panel" style="margin-top:14px"><summary class="small" style="cursor:pointer">Riwayat perubahan (${c.events.length})</summary><ul class="events">
         ${c.events.map((e) => `<li><b>${esc(e.user_name ?? "—")}</b> · ${esc(FIELD_LABEL[e.field] ?? e.field)}${e.field === "sheet" || e.field === "created" ? "" : `: ${esc(eventValue(e.field, e.from_value))} → ${esc(eventValue(e.field, e.to_value))}`}<div class="small">${esc(fmtStamp(e.at))}</div></li>`).join("")}
       </ul></details></div>
     <div class="foot"><div class="left">${canArchive ? `<button class="btn danger" data-action="archive" data-id="${c.id}">Arsipkan</button>` : ""}${leads("Marketing") && c.published_date ? `<button class="btn" data-action="unpublish" data-id="${c.id}">Batalkan status tayang</button>` : ""}</div>
-      <button class="btn" data-action="close-modal">Tutup</button><button class="btn" data-action="footage-open" data-id="${c.id}">Footage</button>${c.editable.includes("sheet") ? `<button class="btn primary" data-action="edit-content" data-id="${c.id}">Edit skrip & info</button>` : ""}</div>`,
+      <button class="btn" data-action="close-modal">Tutup</button>${c.editable.includes("sheet") ? `<button class="btn primary" data-action="edit-content" data-id="${c.id}">Edit skrip & info</button>` : ""}</div>`,
     { wide: true },
   );
   draft = { id: c.id, content: c };
+  fillFootageBox().catch((e) => toast(errorText(e), { error: true }));
 }
 
 // Format teks: bungkus seleksi di kotak skrip dengan **tebal** atau *miring*.

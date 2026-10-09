@@ -1,8 +1,7 @@
 import { $, api, closeModal, delegate, errorText, esc, icon, isLeader, myApps, reloadContents, state, toast } from "./core.js";
 import { renderCalendar } from "./calendar.js";
 import { openContentPicker, openDetail } from "./editor.js";
-import { openSettings } from "./settings.js";
-import { renderFootage } from "./footage.js";
+import { renderSettings } from "./settings.js";
 import { renderTeam } from "./team.js";
 import { renderDashboard, renderWorksheet } from "./worksheet.js";
 
@@ -10,15 +9,15 @@ const PAGES = {
   dashboard: { label: "Dashboard", icon: "dashboard", render: renderDashboard },
   create: { label: "Create konten", icon: "create", render: renderWorksheet },
   calendar: { label: "Konten kalender", icon: "calendar", render: renderCalendar },
-  footage: { label: "Footage", icon: "edit", render: renderFootage },
   team: { label: "Performa & Target", icon: "team", render: renderTeam },
+  settings: { label: "Setting", icon: "settings", render: renderSettings },
 };
 
 function allowedPages() {
   const { role } = state.me;
-  if (isLeader()) return ["dashboard", "create", "calendar", "footage", "team"];
-  if (role === "Talent") return ["dashboard", "calendar", "footage"];
-  return ["dashboard", "create", "calendar", "footage", "team"];
+  if (isLeader()) return ["dashboard", "create", "calendar", "team"];
+  if (role === "Talent") return ["dashboard", "calendar"];
+  return ["dashboard", "create", "calendar", "team"];
 }
 
 function pageTitle(page) {
@@ -27,18 +26,20 @@ function pageTitle(page) {
     dashboard: isLeader() ? `Dashboard Leader ${role}` : `Dashboard ${role}`,
     create: role === "Creative" ? "Produksi konten" : "Worksheet konten",
     calendar: "Konten kalender",
-    footage: "Footage",
+    settings: "Setting",
     team: "Performa & Target",
   }[page];
 }
 
 export async function navigate(page) {
-  if (!allowedPages().includes(page)) page = "dashboard";
+  // Setting ada di bagian bawah sidebar, bukan di daftar menu utama.
+  if (page !== "settings" && !allowedPages().includes(page)) page = "dashboard";
   state.page = page;
   state.stage = "";
   $("pageTitle").textContent = pageTitle(page);
   $("createButton").classList.toggle("hidden", !(page === "create" && state.me.role === "Marketing"));
   document.querySelectorAll("#nav button").forEach((b) => b.classList.toggle("active", b.dataset.page === page));
+  $("settingsBtn").classList.toggle("active", page === "settings");
   history.replaceState(null, "", `#${page}`);
   await rerender();
 }
@@ -96,7 +97,7 @@ $("loginForm").addEventListener("submit", async (e) => {
 
 delegate(document.body, "click", {
   nav: (el) => navigate(el.dataset.page),
-  settings: () => openSettings(),
+  settings: () => navigate("settings"),
   create: () => openContentPicker(),
   detail: (el) => openDetail(Number(el.dataset.id)),
   "close-modal": () => closeModal(),
@@ -134,7 +135,8 @@ async function syncNow() {
   pendingSync = false;
   try {
     await reloadContents();
-    await rerender();
+    // Halaman Setting tidak dirender ulang agar isian yang belum disimpan tidak hilang.
+    if (state.page !== "settings") await rerender();
   } catch {
     // koneksi putus sementara; dicoba lagi pada sinyal berikutnya
   }

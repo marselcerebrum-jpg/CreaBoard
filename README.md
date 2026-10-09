@@ -31,14 +31,14 @@ Ada dua Leader: **Leader Marketing** (skrip, rencana kalender, konfirmasi tayang
 **Pembagian apps** (khusus tim Marketing; Setting → Akun, role & apps — bisa dipilih saat membuat akun): Leader Marketing menentukan apps yang dipegang tiap staff Marketing. Staff otomatis melihat semua konten di apps-nya, dan pilihan apps saat membuat skrip, filter, serta kalender dibatasi ke apps tersebut. Creative dan Talent tidak memakai pembagian apps. Demo: Nadia → JadiASN; Raka → JadiBUMN & JadiBeasiswa.
 
 **Fitur kerja harian:**
-- **Nomor skrip per jenis** — V1, V2… (Video), C1… (Carrousel), S1… (Singlepost), masing-masing mulai dari 1.
+- **Nomor skrip per jenis** — Video, Carrousel, dan Singlepost masing-masing bernomor mulai dari 1. Klik nomor atau kolom USP/Keyword untuk membuka skrip.
 - **Jenis skrip** Reguler / Trend / Urgent. Trend & Urgent bertenggat H-0, terpisah dari tenggat reguler.
 - **Format teks** di editor skrip: tombol **B** / *I* atau Ctrl+B / Ctrl+I (ditulis sebagai `**tebal**` / `*miring*`).
 - **Draf otomatis** — isi editor disimpan di browser dan bisa dipulihkan setelah refresh atau saat dibuka lagi.
-- **Langkah berikutnya** di antrean produksi menjelaskan siapa yang harus melakukan apa. Mengisi QC setelah Link hasil ada otomatis menandai Creative Done.
+- Mengisi QC setelah Link hasil ada otomatis menandai Creative Done.
 - **Pembaruan otomatis** — perubahan dari akun lain langsung tampil tanpa refresh (Server-Sent Events).
 - **Pencarian** mencakup judul dan seluruh isi skrip/brief.
-- **Footage** — per konten (tombol Footage di detail/tabel) atau lewat menu Footage: unggah file dari komputer atau tambah link Google Drive, dikelompokkan dan difilter per Apps & jenis konten. Leader mengatur link folder Drive tiap Apps × jenis konten.
+- **Footage** — diisi langsung di form skrip (dan di detail skrip): unggah file dari komputer atau tempel link Google Drive. Semua footage terkumpul otomatis di **Setting → Link footage**, dikelompokkan per platform (Apps) × jenis konten; di sana Leader mengatur link folder Drive tiap kelompok.
 
 Untuk mengosongkan data lokal: hentikan server, hapus folder `data/`, lalu jalankan lagi.
 

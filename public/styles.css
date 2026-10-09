@@ -45,7 +45,7 @@ aside { position: fixed; inset: 0 auto 0 0; width: 220px; background: var(--fore
 .nav { margin-top: 20px; display: flex; flex-direction: column; gap: 4px; }
 .nav button, .settings-btn, .logout-btn { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 11px 12px; border: 0; border-radius: 9px; background: none; color: var(--stone); }
 .nav button:hover:not(.active), .settings-btn:hover, .logout-btn:hover { background: var(--pine); color: #fff; }
-.nav button.active { background: var(--sage); color: var(--forest); font-weight: 700; }
+.nav button.active, .settings-btn.active { background: var(--sage); color: var(--forest); font-weight: 700; }
 main { margin-left: 220px; padding: 26px 34px; max-width: 1800px; }
 header { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); padding-bottom: 16px; }
 .footer-note { margin-top: 20px; }
@@ -236,9 +236,12 @@ tr:hover td { background: #FBFBF8; }
 .person summary { cursor: pointer; font-size: 12px; color: var(--pine); font-weight: 650; }
 
 /* ───────── setting ───────── */
-.setting-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
-.setting-tile { padding: 18px; text-align: left; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
-.setting-tile:hover { border-color: var(--fern); }
+.settings-nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.settings-nav .btn.active { background: var(--forest); border-color: var(--forest); color: #fff; }
+.settings-title { margin: 0 0 14px; font-size: 17px; color: var(--forest); }
+.settings-actions { display: flex; gap: 8px; justify-content: space-between; align-items: center; margin-top: 14px; }
+#settingsBody .panel + .panel { margin-top: 14px; }
+.panel.narrow { max-width: 560px; }
 .settingrow { display: flex; gap: 10px; align-items: center; border-bottom: 1px solid var(--line); padding: 10px 0; flex-wrap: wrap; }
 .settingrow input { flex: 1; min-width: 160px; }
 .settingrow select { width: 150px; }
@@ -310,7 +313,6 @@ tr:hover td { background: #FBFBF8; }
 .setting-cols { display: flex; gap: 10px; font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .4px; }
 .setting-cols span:first-child { flex: 1; }
 .setting-cols span:last-child { width: 220px; }
-.setting-tile b { color: var(--forest); }
 .summary-nums { display: flex; gap: 28px; margin-top: 12px; }
 .summary-nums strong { display: block; font-size: 26px; color: var(--forest); }
 .summary-nums span { font-size: 12px; color: var(--muted); }
@@ -322,23 +324,19 @@ tr:hover td { background: #FBFBF8; }
 @media (max-width: 760px) { .calendar-summary { grid-template-columns: 1fr 1fr; } }
 
 /* ───────── fitur tambahan ───────── */
-.next-step { display: flex; flex-direction: column; gap: 2px; min-width: 210px; max-width: 250px; font-size: 12px; line-height: 1.4; padding: 6px 8px; border-radius: 7px; background: var(--warn-bg); border: 1px solid var(--warn-line); }
-.next-step b { font-size: 11px; color: var(--warn); text-transform: uppercase; letter-spacing: .3px; }
-.next-step span { color: var(--ink); }
-.next-step.ns-done { background: var(--ok-bg); border-color: var(--ok-line); }
-.next-step.ns-done b { color: var(--ok); }
-.next-step.ns-warn { background: var(--danger-bg); border-color: var(--danger-line); }
-.next-step.ns-warn b { color: var(--danger); }
-.footage-btn { border: 1px dashed var(--fern); background: #fff; color: var(--pine); border-radius: 7px; padding: 6px 10px; font-size: 12px; font-weight: 600; white-space: nowrap; }
-.footage-btn:hover { background: var(--sage-soft); }
 .b-prio { background: #FCE4D6; color: #9A3B0B; border-color: #F2B694; }
 .b-link { background: var(--info-bg); color: var(--info); border-color: var(--info-line); }
 .b-file { background: var(--sage-soft); color: var(--pine); border-color: var(--sage); }
 .footage-add { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 10px 0 14px; }
 .footage-add .upload-btn { cursor: pointer; }
-.footage-link { display: flex; gap: 6px; flex: 1; min-width: 280px; flex-wrap: wrap; }
-.footage-link input[name="url"] { flex: 2; min-width: 200px; }
-.footage-link input[name="title"] { flex: 1; min-width: 120px; }
+.footage-add #fbUrl { flex: 2; min-width: 200px; }
+.footage-add #fbTitle { flex: 1; min-width: 120px; }
+.footage-box { margin-top: 16px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.footage-box .footage-add { margin: 8px 0 6px; }
+.fb-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.fb-head h3 { margin: 0; font-size: 15px; color: var(--forest); }
+.folder-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 10px 0 4px; }
+.folder-row input { flex: 1; min-width: 240px; }
 .upload-progress { width: 100%; height: 22px; position: relative; background: var(--mist); border-radius: 6px; overflow: hidden; }
 .upload-progress i { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--sage); transition: width .2s; }
 .upload-progress span { position: relative; font-size: 11px; padding-left: 8px; line-height: 22px; color: var(--ink); }
@@ -349,11 +347,11 @@ tr:hover td { background: #FBFBF8; }
 .footage-item .fi-actions { display: flex; gap: 6px; }
 .footage-group { margin-bottom: 14px; }
 .fg-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
-.fg-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.fg-head h2 { margin: 0; font-size: 16px; }
 .fmt-tools { display: flex; gap: 4px; margin-right: auto; }
 .fmt-tools .btn { min-width: 34px; justify-content: center; }
 .draft-banner { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; background: var(--warn-bg); color: var(--warn); }
-.sheet .read strong { color: var(--forest); }
+.sheet .read strong { color: var(--forest); font-weight: 800; }
 /* Kalender lebih besar dan mudah diisi */
 .cal-nav { display: flex; gap: 6px; justify-content: flex-end; padding: 0 16px 10px; }
 .calendar-scroll { max-height: 72vh; scroll-behavior: auto; }
@@ -369,3 +367,8 @@ tr:hover td { background: #FBFBF8; }
 .plan-box .swatch { width: 16px; height: 32px; font-size: 11px; }
 .actual { min-width: 30px; height: 34px; font-size: 13px; border-radius: 6px; }
 .calendar-scroll .c-total { min-width: 90px; }
+
+/* Sel nomor & USP/Keyword membuka detail skrip */
+.ws-table td.open-cell, .ws-card header.open-cell { cursor: pointer; }
+.ws-table tr:hover td.open-cell { background: var(--sage-soft); }
+.ws-table td.open-cell:hover .t-title { color: var(--pine); text-decoration: underline; }

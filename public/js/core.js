@@ -163,9 +163,8 @@ export async function reloadContents() {
 }
 
 // ───────────── nomor & format teks ─────────────
-const TYPE_PREFIX = { Video: "V", Carousel: "C", Singlepost: "S" };
-/** Nomor skrip per jenis konten: V1, C1, S1 … */
-export const contentNo = (c) => `${TYPE_PREFIX[c.type] ?? ""}${c.type_no ?? c.id}`;
+/** Nomor skrip per jenis konten: tiap jenis (Video, Carrousel, Singlepost) mulai dari 1. */
+export const contentNo = (c) => String(c.type_no ?? c.id);
 
 /** Teks skrip dengan **tebal** dan *miring* → HTML aman (di-escape lebih dulu). */
 export function richText(s) {
