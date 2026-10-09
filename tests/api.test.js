@@ -264,7 +264,7 @@ test("akun: hanya Leader mengelola; password minimal 8", async () => {
   assert.equal((await leader.call("PATCH", `/api/users/${leader.id}`, { active: false })).status, 422);
 });
 
-test("semua peran dapat mengubah dropdown tabel pada konten yang terlihat", async () => {
+test("semua peran dapat mengubah dropdown tabel pada konten yang terlihat, kecuali QC (hanya Marketing)", async () => {
   const mk = await login("nadia");
   const cr = await login("dimas");
   let c = await makeVideo(mk, { creative_user_id: cr.id });
@@ -274,7 +274,10 @@ test("semua peran dapat mengubah dropdown tabel pada konten yang terlihat", asyn
   assert.equal(c.talent_status, opt("talent", "Done"));
   const r = await patch(cr, c, { app: (await db.one("select id from options where key='app' and archived=0 order by sort desc")).id });
   assert.equal(r.status, 200);
-  assert.ok(r.data.editable.includes("qc_status"));
+  // QC dinilai tim Marketing: Creative tidak bisa mengubahnya, Marketing bisa.
+  assert.ok(!r.data.editable.includes("qc_status"));
+  assert.equal((await patch(cr, r.data, { qc_status: opt("qc", "Done") })).status, 403);
+  assert.ok((await mk.call("GET", `/api/contents/${c.id}`)).data.editable.includes("qc_status"));
 });
 
 test("dua Leader: Leader Creative memimpin tim Creative, Leader Marketing tim Marketing", async () => {
@@ -366,7 +369,8 @@ test("hak akses staff: Marketing per apps (konten & kalender), Creative hanya dr
   // Staff Creative: dropdown & link saja, catatan tidak.
   const c = (await nadia.call("POST", "/api/contents", { type: "Video", app: own, sheet: videoSheet(), creative_user_id: dimas.id })).data;
   const seen = (await dimas.call("GET", `/api/contents/${c.id}`)).data;
-  assert.ok(!seen.editable.includes("notes") && !seen.editable.includes("sheet") && seen.editable.includes("qc_status"));
+  assert.ok(!seen.editable.includes("notes") && !seen.editable.includes("sheet") && !seen.editable.includes("qc_status"));
+  assert.ok(seen.editable.includes("creative_status"));
   assert.equal((await dimas.call("PATCH", `/api/contents/${c.id}`, { revision: seen.revision, changes: { notes: "x" } })).status, 403);
 });
 

@@ -32,7 +32,9 @@ Ada dua Leader: **Leader Marketing** (skrip, rencana kalender, konfirmasi tayang
 
 **Fitur kerja harian:**
 - **Nomor skrip per jenis** — Video, Carrousel, dan Singlepost masing-masing bernomor mulai dari 1. Klik nomor atau kolom USP/Keyword untuk membuka skrip.
-- **Jenis skrip** Reguler / Trend / Urgent. Urgent bertenggat H-0; Trend tidak pernah dihitung telat (sifatnya mendadak).
+- **Jenis skrip** Reguler / Trend / Urgent. Trend dan Urgent tidak pernah dihitung telat (sifatnya mendadak); skrip Urgent yang belum tayang selalu tampil paling atas di tabel.
+- **QC** hanya bisa diisi tim Marketing.
+- **Target sesuai tanggal** — rencana kalender dianggap terpenuhi bila skripnya ready pada tanggal pengerjaan yang sama dengan tanggal rencana. Pencapaian & selisih di Kalender, Pencapaian di Dashboard Marketing, dan peringatan "skrip perlu disiapkan" (H+3) memakai aturan yang sama.
 - **Hapus skrip** — tombol di detail skrip dan ikon tempat sampah di kolom Aksi. Penghapusan permanen (riwayat & file footage ikut terhapus). Leader Marketing bisa menghapus semua skrip; staff Marketing hanya skrip miliknya yang belum selesai diedit/tayang.
 - **Telat & Terlewat** — Telat (Marketing): skrip belum ready padahal sudah lewat H-3 sebelum upload. Telat (Creative): edit belum selesai padahal sudah lewat H-1 (hari upload). Terlewat: tanggal upload sudah lewat dan belum tayang. Konten yang sudah terlewat tidak dihitung dobel sebagai telat.
 - **Editor skrip** (halaman penuh): tab Video / Carrousel / Singlepost, field utama (Judul konten, Apps, Tanggal upload, Editor), **Detail lainnya** (Info skrip, Jenis skrip, tanggal pengerjaan, talent, meta lain, keterangan), lalu tabel **Bagian · Skrip & arahan · Footage / Ilustrasi** dengan tombol tambah/hapus bagian dan caption. Format teks: tombol **B** / *I* di tiap kotak atau Ctrl+B / Ctrl+I (ditulis sebagai `**tebal**` / `*miring*`).

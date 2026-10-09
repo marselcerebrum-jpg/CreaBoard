@@ -222,6 +222,9 @@ test("Telat & Terlewat: Marketing H-3 skrip, Creative H-1 edit, Trend tidak pern
   assert.equal((await make("upload H+2 draft", "2026-10-12")).lateScript, true);
   assert.equal((await make("upload H+3 draft", "2026-10-13")).lateScript, false);
   assert.equal((await make("upload H+2 ready", "2026-10-12", { ready: true })).lateScript, false);
+  // Urgent juga tidak pernah telat (sama seperti Trend).
+  const urgent = await make("urgent upload hari ini", "2026-10-10", { priority: "Urgent" });
+  assert.deepEqual([urgent.lateScript, urgent.lateEdit], [false, false]);
   // Trend tidak pernah telat (skrip maupun edit).
   const trend = await make("trend upload hari ini", "2026-10-10", { priority: "Trend" });
   assert.equal(trend.lateScript, false);

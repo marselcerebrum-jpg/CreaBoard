@@ -43,13 +43,16 @@ function scoped(c, { useDates = true } = {}) {
   );
 }
 
+/** Skrip Urgent yang belum tayang selalu tampil paling atas. */
+const urgentFirst = (c) => (c.priority === "Urgent" && !c.flags.published ? 1 : 0);
+
 function visibleRows() {
   const q = filters.search.trim().toLowerCase();
   return state.contents
     .filter((c) => scoped(c, { useDates: !DATELESS.includes(state.stage) }))
     .filter((c) => !state.stage || c.flags[state.stage])
     .filter((c) => !q || `${contentNo(c)} ${optLabel(c.app)} ${searchText(c)}`.toLowerCase().includes(q))
-    .sort((a, b) => a.upload_date.localeCompare(b.upload_date) || a.id - b.id);
+    .sort((a, b) => urgentFirst(b) - urgentFirst(a) || a.upload_date.localeCompare(b.upload_date) || a.id - b.id);
 }
 
 function filterBar({ withEditor, withType = true }) {
@@ -199,13 +202,19 @@ const pctOf = (a, b) => (b ? Math.round((a / b) * 100) : 0);
 async function dashNumbers() {
   const role = state.me.role;
   const inMonth = (d) => Boolean(d) && d.slice(0, 7) === dashMonth;
-  const byType = Object.fromEntries(TYPES.map((t) => [t, { target: 0, actual: 0 }]));
+  // progress = yang dihitung terhadap target. Marketing: rencana yang terpenuhi sesuai tanggalnya
+  // (sama dengan Kalender & peringatan H+3). Creative/Talent: konten yang sudah selesai.
+  const byType = Object.fromEntries(TYPES.map((t) => [t, { target: 0, actual: 0, progress: 0 }]));
   const uploaded = state.contents.filter((c) => inMonth(c.published_date)).length;
   if (role === "Marketing") {
     const [cal, h3] = await Promise.all([api("GET", `/api/calendar?month=${dashMonth}`), api("GET", "/api/targets/h3")]);
     const scope = myApps();
     const ok = (app) => !scope.length || scope.includes(app);
-    for (const p of cal.plans) if (ok(p.app) && p.amount != null) byType[p.type].target += p.amount;
+    for (const p of cal.plans) {
+      if (!ok(p.app) || p.amount == null) continue;
+      byType[p.type].target += p.amount;
+      byType[p.type].progress += Math.min(cal.actuals[JSON.stringify([p.app, p.type, p.date])] ?? 0, p.amount);
+    }
     for (const [k, n] of Object.entries(cal.actuals)) {
       const [app, type] = JSON.parse(k);
       if (ok(app)) byType[type].actual += n;
@@ -215,7 +224,7 @@ async function dashNumbers() {
       byType, uploaded,
       doneTitle: "Skrip selesai", doneSub: "Skrip yang sudah siap untuk diproduksi.", doneIcon: "qc",
       targetSub: `Total target konten untuk ${monthName(dashMonth)}.`,
-      rate: { value: TYPES.reduce((x, t) => x + byType[t].actual, 0), label: "target skrip selesai" },
+      rate: { value: TYPES.reduce((x, t) => x + byType[t].progress, 0), label: "target terpenuhi sesuai tanggal" },
       alert: { need, title: "skrip perlu disiapkan", sub: `Target sampai ${fmtDate(h3.to)}.`, action: '<button class="btn wide" data-action="goto" data-page="calendar">' + icon("calendar", 16) + " Lihat kalender</button>" },
     };
   }
@@ -223,7 +232,10 @@ async function dashNumbers() {
   const rows = state.contents.filter((c) => inMonth(c.upload_date) && (!talent || (c.type === "Video" && sem(c.talent_status) !== "Tidak perlu")));
   for (const c of rows) {
     byType[c.type].target++;
-    if (talent ? sem(c.talent_status) === "Done" : sem(c.creative_status) === "Done") byType[c.type].actual++;
+    if (talent ? sem(c.talent_status) === "Done" : sem(c.creative_status) === "Done") {
+      byType[c.type].actual++;
+      byType[c.type].progress++;
+    }
   }
   const until = new Date(Date.parse(`${state.today}T12:00:00Z`) + 3 * 864e5).toISOString().slice(0, 10);
   const need = Object.fromEntries(TYPES.map((t) => [t, 0]));
@@ -266,12 +278,12 @@ export async function renderDashboard(root) {
       <div class="kbar"><i style="width:${Math.min(100, rate)}%"></i></div><small>${n.rate.value} dari ${target} ${esc(n.rate.label)}.</small></div></div>
   </div>`;
 
-  const scale = Math.max(1, ...TYPES.map((t) => Math.max(n.byType[t].target, n.byType[t].actual)));
+  const scale = Math.max(1, ...TYPES.map((t) => Math.max(n.byType[t].target, n.byType[t].progress)));
   const TICON = { Video: "edit", Carousel: "layers", Singlepost: "image" };
   const tva = `<section class="panel tva"><div class="tva-head"><h2>Target vs Aktual Konten Bulan Ini</h2>
-      <div class="tva-legend"><span><i class="dt dt-t"></i>Target</span><span><i class="dt dt-a"></i>Aktual</span></div></div>
-    <div class="tva-grid">${TYPES.map((t) => `<div class="tva-item"><div class="tva-top">${icon(TICON[t], 18)}<b>${typeLabel(t)}</b><span>${n.byType[t].actual} / ${n.byType[t].target}</span></div>
-      <div class="tbar tbar-t"><i style="width:${(n.byType[t].target / scale) * 100}%"></i></div><div class="tbar tbar-a"><i style="width:${(n.byType[t].actual / scale) * 100}%"></i></div></div>`).join("")}</div></section>`;
+      <div class="tva-legend"><span><i class="dt dt-t"></i>Target</span><span><i class="dt dt-a"></i>${state.me.role === "Marketing" ? "Aktual sesuai tanggal" : "Aktual"}</span></div></div>
+    <div class="tva-grid">${TYPES.map((t) => `<div class="tva-item"><div class="tva-top">${icon(TICON[t], 18)}<b>${typeLabel(t)}</b><span>${n.byType[t].progress} / ${n.byType[t].target}</span></div>
+      <div class="tbar tbar-t"><i style="width:${(n.byType[t].target / scale) * 100}%"></i></div><div class="tbar tbar-a"><i style="width:${(n.byType[t].progress / scale) * 100}%"></i></div></div>`).join("")}</div></section>`;
 
   const needTotal = TYPES.reduce((x, t) => x + n.alert.need[t], 0);
   const alert = `<section class="alert-card ${needTotal ? "" : "ok"}"><div class="ac-head"><span class="ac-ico">${needTotal ? "!" : "✓"}</span>

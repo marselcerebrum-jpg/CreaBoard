@@ -37,11 +37,15 @@ const daysOf = (m) => {
   return Array.from({ length: new Date(Date.UTC(y, mm, 0)).getUTCDate() }, (_, i) => `${m}-${String(i + 1).padStart(2, "0")}`);
 };
 
+const addUp = (list) => list.reduce((s, x) => ({ plan: s.plan + x.plan, actual: s.actual + x.actual, met: s.met + x.met }), { plan: 0, actual: 0, met: 0 });
+
 /** Rekap rencana vs aktual per apps × jenis untuk bulan yang dibuka. */
 function compute() {
   const apps = scopeApps();
   const ids = new Set(apps.map((a) => a.id));
-  const by = Object.fromEntries(apps.map((a) => [a.id, Object.fromEntries(TYPES.map((t) => [t, { plan: 0, actual: 0 }]))]));
+  // met = rencana yang terpenuhi sesuai tanggal targetnya (per hari: min(aktual, rencana)).
+  // Aturan yang sama dipakai peringatan "skrip perlu disiapkan" di dashboard.
+  const by = Object.fromEntries(apps.map((a) => [a.id, Object.fromEntries(TYPES.map((t) => [t, { plan: 0, actual: 0, met: 0 }]))]));
   const plans = Object.fromEntries(data.plans.map((p) => [key(p.app, p.type, p.date), p]));
   let selfEdit = 0;
   const underDays = new Set();
@@ -50,17 +54,15 @@ function compute() {
     by[p.app][p.type].plan += p.amount;
     if (p.color) selfEdit += p.amount;
     const actual = data.actuals[key(p.app, p.type, p.date)] ?? 0;
+    by[p.app][p.type].met += Math.min(actual, p.amount);
     if (p.date <= state.today && actual < p.amount) underDays.add(p.date);
   }
   for (const [k, n] of Object.entries(data.actuals)) {
     const [app, type] = JSON.parse(k);
     if (ids.has(app)) by[app][type].actual += n;
   }
-  const appTotal = (id) => TYPES.reduce((s, t) => ({ plan: s.plan + by[id][t].plan, actual: s.actual + by[id][t].actual }), { plan: 0, actual: 0 });
-  const total = apps.reduce((s, a) => {
-    const t = appTotal(a.id);
-    return { plan: s.plan + t.plan, actual: s.actual + t.actual };
-  }, { plan: 0, actual: 0 });
+  const appTotal = (id) => addUp(TYPES.map((t) => by[id][t]));
+  const total = addUp(apps.map((a) => appTotal(a.id)));
   return { apps, by, plans, appTotal, total, selfEdit, underDays: [...underDays].sort() };
 }
 
@@ -86,12 +88,12 @@ function monthTools({ live = true } = {}) {
   </div>`;
 }
 
-function statCards({ plan, actual }) {
-  const p = pct(actual, plan);
+function statCards({ plan, actual, met }) {
+  const p = pct(met, plan);
   return `<div class="stat-row">
     <div class="stat"><div><span>Total Rencana</span><b>${plan}</b><small>konten</small></div><i class="stat-ico ico-plan">${icon("calendar", 22)}</i></div>
-    <div class="stat"><div><span>Total Aktual <em>(skrip ready)</em></span><b>${actual}</b><small>konten</small></div><i class="stat-ico ico-ok">${icon("qc", 22)}</i></div>
-    <div class="stat"><div><span>Selisih</span><b class="warn-num">${gap(plan, actual)}</b><small>konten</small></div><i class="stat-ico ico-warn">${icon("missed", 22)}</i></div>
+    <div class="stat"><div><span>Total Aktual <em>(skrip ready)</em></span><b>${actual}</b><small>${met} sesuai tanggal target</small></div><i class="stat-ico ico-ok">${icon("qc", 22)}</i></div>
+    <div class="stat"><div><span>Selisih</span><b class="warn-num">${gap(plan, met)}</b><small>belum terpenuhi sesuai tanggal</small></div><i class="stat-ico ico-warn">${icon("missed", 22)}</i></div>
     <div class="stat"><div><span>Pencapaian</span><b>${pctText(p)}</b></div>${donut(p)}</div>
   </div>`;
 }
@@ -109,13 +111,13 @@ function summaryView(r) {
     .sort((a, b) => r.appTotal(b.id).plan - r.appTotal(a.id).plan)
     .map((a) => {
       const t = r.appTotal(a.id);
-      const p = pct(t.actual, t.plan);
+      const p = pct(t.met, t.plan);
       const noPlan = !t.plan;
       return `<article class="app-card">
         <header>${appMark(a.label)}</header>
-        <div class="app-big"><b>${t.actual} / ${t.plan}</b>${noPlan ? '<span class="tag-noplan">Belum ada rencana</span>' : `<span class="${p >= 100 ? "pct-ok" : p ? "" : "pct-zero"}">${pctText(p)}</span>`}</div>
-        <div class="small">${noPlan ? `${t.actual} skrip ready tanpa rencana` : "skrip ready dari rencana"}</div>${bar(noPlan ? 0 : p)}
-        <div class="type-split">${TYPES.map((ty) => `<div><span>${typeLabel(ty)}</span><b>${r.by[a.id][ty].actual} / ${r.by[a.id][ty].plan}</b></div>`).join("")}</div>
+        <div class="app-big"><b>${noPlan ? t.actual : t.met} / ${t.plan}</b>${noPlan ? '<span class="tag-noplan">Belum ada rencana</span>' : `<span class="${p >= 100 ? "pct-ok" : p ? "" : "pct-zero"}">${pctText(p)}</span>`}</div>
+        <div class="small">${noPlan ? `${t.actual} skrip ready tanpa rencana` : "terpenuhi sesuai tanggal target"}</div>${bar(noPlan ? 0 : p)}
+        <div class="type-split">${TYPES.map((ty) => `<div><span>${typeLabel(ty)}</span><b>${r.by[a.id][ty].met} / ${r.by[a.id][ty].plan}</b></div>`).join("")}</div>
         <button class="btn mini wide" data-action="cal-open" data-app="${esc(a.id)}">Lihat detail →</button>
       </article>`;
     })
@@ -147,6 +149,7 @@ function planView(r) {
   const lead = (new Date(`${dates[0]}T12:00:00Z`).getUTCDay() + 6) % 7;
   let target = 0;
   let actualSum = 0;
+  let metSum = 0;
   let self = 0;
   const cells = dates.map((d, i) => {
     const k = key(app.id, planType, d);
@@ -155,6 +158,7 @@ function planView(r) {
     const amount = plan?.amount;
     target += amount ?? 0;
     actualSum += actual;
+    metSum += amount == null ? 0 : Math.min(actual, amount);
     if (plan?.color) self += amount ?? 0;
     const isLinked = linked.has(k);
     const status = amount == null ? "none" : actual >= amount ? "ok" : d <= state.today ? "under" : "wait";
@@ -170,7 +174,7 @@ function planView(r) {
       <div class="day-line"><span><i class="dot dot-${status}"></i>Aktual</span><b class="act-${status}">${actual}</b></div>
     </div>`;
   });
-  const p = pct(actualSum, target);
+  const p = pct(metSum, target);
   return `<div class="plan-head"><h2>${esc(app.label)} · ${esc(monthLabel(month))}</h2>${modeToggle()}${monthTools({ live: false })}</div>
     <div class="plan-bar">
       <div class="field"><label for="planApp">Aplikasi</label><select id="planApp" data-onchange="plan-app">${r.apps.map((a) => `<option value="${esc(a.id)}" ${a.id === app.id ? "selected" : ""}>${esc(a.label)}</option>`).join("")}</select></div>
@@ -196,21 +200,21 @@ function tableView(r) {
   const dates = daysOf(month);
   const linked = new Set(data.kpiLinked);
   const types = TYPES.filter((t) => !fltType || t === fltType);
-  const sum = (id) => types.reduce((s, t) => ({ plan: s.plan + r.by[id][t].plan, actual: s.actual + r.by[id][t].actual }), { plan: 0, actual: 0 });
+  const sum = (id) => addUp(types.map((t) => r.by[id][t]));
   const apps = r.apps.filter((a) => showEmpty || sum(a.id).plan || sum(a.id).actual);
   const hidden = r.apps.length - apps.length;
   const dayTotals = dates.map(() => ({ plan: 0, actual: 0 }));
   const wd = (d) => new Intl.DateTimeFormat("id-ID", { weekday: "short", timeZone: "UTC" }).format(new Date(`${d}T12:00:00Z`));
   const weekend = (d) => [0, 6].includes(new Date(`${d}T12:00:00Z`).getUTCDay());
   const cls = (d) => `${weekend(d) ? "we" : ""} ${d === state.today ? "td" : ""}`;
-  const totalCell = ({ plan, actual }) => {
-    const v = pct(actual, plan);
-    return `<td class="tot"><b>${actual}</b><span>/ ${plan}</span>${plan ? `<em class="${v >= 100 ? "pct-ok" : ""}">${v}%</em>` : ""}</td>`;
+  const totalCell = ({ plan, met }) => {
+    const v = pct(met, plan);
+    return `<td class="tot" title="Terpenuhi sesuai tanggal / rencana"><b>${met}</b><span>/ ${plan}</span>${plan ? `<em class="${v >= 100 ? "pct-ok" : ""}">${v}%</em>` : ""}</td>`;
   };
   const body = apps.map((a) => {
     const t = sum(a.id);
-    const v = pct(t.actual, t.plan);
-    const group = `<tr class="grp"><th class="sc">${appMark(a.label)}<span class="grp-meta">${t.actual} / ${t.plan}${t.plan ? ` · ${v}%` : ""}</span></th><td colspan="${dates.length + 1}"></td></tr>`;
+    const v = pct(t.met, t.plan);
+    const group = `<tr class="grp"><th class="sc">${appMark(a.label)}<span class="grp-meta">${t.met} / ${t.plan}${t.plan ? ` · ${v}%` : ""}</span></th><td colspan="${dates.length + 1}"></td></tr>`;
     const rows = types.map((ty) => {
       const cells = dates.map((d, i) => {
         const k = key(a.id, ty, d);
@@ -232,10 +236,7 @@ function tableView(r) {
     });
     return group + rows.join("");
   }).join("");
-  const grand = apps.reduce((s, a) => {
-    const t = sum(a.id);
-    return { plan: s.plan + t.plan, actual: s.actual + t.actual };
-  }, { plan: 0, actual: 0 });
+  const grand = addUp(apps.map((a) => sum(a.id)));
   return `<div class="plan-head"><h2>Semua aplikasi · ${esc(monthLabel(month))}</h2>${modeToggle()}${monthTools({ live: false })}</div>
     <div class="table-tools">
       <div class="type-tabs">${["", ...TYPES].map((t) => `<button class="btn mini ${t === fltType ? "active" : ""}" data-action="tbl-type" data-type="${t}">${t ? typeLabel(t) : "Semua jenis"}</button>`).join("")}</div>
@@ -252,22 +253,22 @@ function tableView(r) {
 // ───────────── 03 Aktual: pantau selisih ─────────────
 function actualView(r) {
   const types = TYPES.filter((t) => !fltType || t === fltType);
-  const sum = (id) => types.reduce((s, t) => ({ plan: s.plan + r.by[id][t].plan, actual: s.actual + r.by[id][t].actual }), { plan: 0, actual: 0 });
+  const sum = (id) => addUp(types.map((t) => r.by[id][t]));
   const apps = r.apps.filter((a) => (fltApp ? a.id === fltApp : sum(a.id).plan || sum(a.id).actual));
   const hidden = fltApp ? 0 : r.apps.length - apps.length;
   const line = (cells, { cls = "", app = "", type = "" } = {}) => {
-    const [p, a] = cells;
-    const v = pct(a, p);
-    return `<td class="num">${p}</td><td class="num">${a}</td><td class="num warn-num">${gap(p, a)}</td>
+    const [p, a, m] = cells;
+    const v = pct(m, p);
+    return `<td class="num">${p}</td><td class="num">${a}</td><td class="num">${m}</td><td class="num warn-num">${gap(p, m)}</td>
       <td><div class="pct-cell"><b>${pctText(v)}</b>${bar(v)}</div></td>
       <td>${app ? `<button class="btn mini" data-action="cal-open" data-app="${esc(app)}" ${type ? `data-type="${type}"` : ""}>Lihat tanggal</button>` : ""}</td>`;
   };
-  let grand = { plan: 0, actual: 0 };
+  let grand = { plan: 0, actual: 0, met: 0 };
   const body = apps.map((a) => {
     const t = sum(a.id);
-    grand = { plan: grand.plan + t.plan, actual: grand.actual + t.actual };
-    const rows = types.map((ty, i) => `<tr>${i === 0 ? `<td rowspan="${types.length + (types.length > 1 ? 1 : 0)}" class="app-cell">${appMark(a.label)}</td>` : ""}<td>${typeLabel(ty)}</td>${line([r.by[a.id][ty].plan, r.by[a.id][ty].actual], { app: a.id, type: ty })}</tr>`).join("");
-    const totalRow = types.length > 1 ? `<tr class="row-total"><td>Total ${esc(a.label)}</td>${line([t.plan, t.actual], { app: a.id })}</tr>` : "";
+    grand = addUp([grand, t]);
+    const rows = types.map((ty, i) => `<tr>${i === 0 ? `<td rowspan="${types.length + (types.length > 1 ? 1 : 0)}" class="app-cell">${appMark(a.label)}</td>` : ""}<td>${typeLabel(ty)}</td>${line([r.by[a.id][ty].plan, r.by[a.id][ty].actual, r.by[a.id][ty].met], { app: a.id, type: ty })}</tr>`).join("");
+    const totalRow = types.length > 1 ? `<tr class="row-total"><td>Total ${esc(a.label)}</td>${line([t.plan, t.actual, t.met], { app: a.id })}</tr>` : "";
     return rows + totalRow;
   }).join("");
   const scoped = scopeApps();
@@ -278,9 +279,9 @@ function actualView(r) {
       <div class="field"><label for="fltType">Jenis konten</label><select id="fltType" data-onchange="flt-type"><option value="">Semua jenis</option>${TYPES.map((t) => `<option value="${t}" ${t === fltType ? "selected" : ""}>${typeLabel(t)}</option>`).join("")}</select></div>
     </div>
     <div class="panel flush"><div class="tablewrap"><table class="gap-table">
-      <thead><tr><th>Aplikasi</th><th>Jenis konten</th><th class="num">Rencana</th><th class="num">Aktual<small>(skrip ready)</small></th><th class="num">Selisih</th><th>Pencapaian</th><th></th></tr></thead>
-      <tbody>${body || '<tr><td colspan="7" class="empty">Belum ada rencana atau aktual untuk filter ini.</td></tr>'}</tbody>
-      ${apps.length ? `<tfoot><tr><td colspan="2">Total keseluruhan</td>${line([grand.plan, grand.actual])}</tr></tfoot>` : ""}
+      <thead><tr><th>Aplikasi</th><th>Jenis konten</th><th class="num">Rencana</th><th class="num">Aktual<small>(skrip ready)</small></th><th class="num">Sesuai tanggal<small>(terpenuhi)</small></th><th class="num">Selisih</th><th>Pencapaian</th><th></th></tr></thead>
+      <tbody>${body || '<tr><td colspan="8" class="empty">Belum ada rencana atau aktual untuk filter ini.</td></tr>'}</tbody>
+      ${apps.length ? `<tfoot><tr><td colspan="2">Total keseluruhan</td>${line([grand.plan, grand.actual, grand.met])}</tr></tfoot>` : ""}
     </table></div></div>
     ${hidden ? `<p class="small">${hidden} aplikasi tanpa rencana & aktual tidak ditampilkan. Pilih di filter Aplikasi untuk melihatnya.</p>` : ""}`;
 }
@@ -288,17 +289,17 @@ function actualView(r) {
 // ───────────── 04 Evaluasi akhir bulan ─────────────
 function evaluationNotes(r) {
   const notes = [];
-  const { plan, actual } = r.total;
+  const { plan, actual, met } = r.total;
   if (!plan) notes.push(["Belum ada rencana", "Isi rencana harian di menu Rencana Bulanan agar capaian bisa dievaluasi."]);
-  else if (gap(plan, actual)) notes.push([`${gap(plan, actual)} konten belum selesai`, `Masih ada ${gap(plan, actual)} konten dari total rencana ${plan} yang belum mencapai skrip ready.`]);
-  else notes.push(["Semua rencana tercapai", `Aktual ${actual} konten dari rencana ${plan}. Pertahankan ritme ini bulan depan.`]);
+  else if (gap(plan, met)) notes.push([`${gap(plan, met)} konten belum sesuai target`, `Dari ${plan} rencana, baru ${met} yang skripnya ready di tanggal targetnya (total skrip ready bulan ini: ${actual}).`]);
+  else notes.push(["Semua rencana tercapai", `${met} dari ${plan} rencana terpenuhi sesuai tanggal. Pertahankan ritme ini bulan depan.`]);
   const byType = TYPES.map((t) => {
-    const s = r.apps.reduce((acc, a) => ({ plan: acc.plan + r.by[a.id][t].plan, actual: acc.actual + r.by[a.id][t].actual }), { plan: 0, actual: 0 });
-    return { t, g: gap(s.plan, s.actual) };
+    const s = addUp(r.apps.map((a) => r.by[a.id][t]));
+    return { t, g: gap(s.plan, s.met) };
   }).sort((a, b) => b.g - a.g);
   if (byType[0].g > 0) notes.push([`${typeLabel(byType[0].t)} perlu diprioritaskan`, `Jenis konten ${typeLabel(byType[0].t)} memiliki selisih paling besar (${byType[0].g}); jadikan fokus utama bulan berikutnya.`]);
-  const behind = r.apps.map((a) => ({ a, ...r.appTotal(a.id) })).filter((x) => x.plan && x.actual < x.plan).sort((x, y) => x.actual / x.plan - y.actual / y.plan)[0];
-  if (behind) notes.push([`${behind.a.label} paling tertinggal`, `Pencapaian ${pct(behind.actual, behind.plan)}% (${behind.actual} dari ${behind.plan} konten).`]);
+  const behind = r.apps.map((a) => ({ a, ...r.appTotal(a.id) })).filter((x) => x.plan && x.met < x.plan).sort((x, y) => x.met / x.plan - y.met / y.plan)[0];
+  if (behind) notes.push([`${behind.a.label} paling tertinggal`, `Pencapaian ${pct(behind.met, behind.plan)}% (${behind.met} dari ${behind.plan} rencana sesuai tanggal).`]);
   if (r.underDays.length) notes.push([`${r.underDays.length} hari di bawah rencana`, "Cek tanggal-tanggalnya di menu Rencana Bulanan (titik oranye)."]);
   if (r.selfEdit) notes.push([`${r.selfEdit} rencana edit mandiri`, "Rencana bertanda warna dikerjakan secara mandiri."]);
   return notes;
@@ -306,7 +307,7 @@ function evaluationNotes(r) {
 
 function evalView(r) {
   const apps = r.apps.filter((a) => r.appTotal(a.id).plan || r.appTotal(a.id).actual);
-  const max = Math.max(1, ...apps.map((a) => Math.max(r.appTotal(a.id).plan, r.appTotal(a.id).actual)));
+  const max = Math.max(1, ...apps.map((a) => Math.max(r.appTotal(a.id).plan, r.appTotal(a.id).met)));
   const step = Math.max(1, Math.ceil(max / 4));
   const top = step * 4;
   const chart = apps.length
@@ -315,7 +316,7 @@ function evalView(r) {
           const t = r.appTotal(a.id);
           return `<div class="bar-group"><div class="bar-pair">
             <div class="vbar v-plan" style="height:${(t.plan / top) * 100}%"><b>${t.plan}</b></div>
-            <div class="vbar v-act" style="height:${(t.actual / top) * 100}%"><b>${t.actual}</b></div></div>
+            <div class="vbar v-act" style="height:${(t.met / top) * 100}%"><b>${t.met}</b></div></div>
             <div class="bar-label">${esc(a.label)}</div></div>`;
         }).join("")}</div></div>`
     : '<div class="empty">Belum ada data bulan ini.</div>';
@@ -323,7 +324,7 @@ function evalView(r) {
     ${statCards(r.total)}
     <div class="eval-grid">
       <section class="panel"><div class="chart-head"><h3>Perbandingan Rencana vs Aktual per Aplikasi</h3>
-        <div class="chart-legend"><span><i class="sq v-plan"></i>Rencana</span><span><i class="sq v-act"></i>Aktual (skrip ready)</span></div></div>${chart}</section>
+        <div class="chart-legend"><span><i class="sq v-plan"></i>Rencana</span><span><i class="sq v-act"></i>Terpenuhi sesuai tanggal</span></div></div>${chart}</section>
       <section class="panel"><h3 class="notes-title">${icon("calendar", 18)} Catatan Evaluasi</h3>
         <ul class="eval-notes">${evaluationNotes(r).map(([t, d]) => `<li><b>${esc(t)}</b><span>${esc(d)}</span></li>`).join("")}</ul></section>
     </div>
@@ -364,14 +365,14 @@ function exportCsv() {
   const r = compute();
   // Sel yang diawali = + - @ diberi tanda ' agar tidak dibaca sebagai rumus oleh Excel.
   const cell = (v) => `"${String(v).replace(/^([=+\-@])/, "'$1").replace(/"/g, '""')}"`;
-  const lines = [[`Laporan rencana vs aktual · ${monthLabel(month)}`], [], ["Aplikasi", "Jenis konten", "Rencana", "Aktual (skrip ready)", "Selisih", "Pencapaian"]];
+  const lines = [[`Laporan rencana vs aktual · ${monthLabel(month)}`], [], ["Aplikasi", "Jenis konten", "Rencana", "Aktual (skrip ready)", "Terpenuhi sesuai tanggal", "Selisih", "Pencapaian"]];
   for (const a of r.apps) {
     for (const t of TYPES) {
-      const { plan, actual } = r.by[a.id][t];
-      if (plan || actual) lines.push([a.label, typeLabel(t), plan, actual, gap(plan, actual), pctText(pct(actual, plan))]);
+      const { plan, actual, met } = r.by[a.id][t];
+      if (plan || actual) lines.push([a.label, typeLabel(t), plan, actual, met, gap(plan, met), pctText(pct(met, plan))]);
     }
   }
-  lines.push(["Total", "", r.total.plan, r.total.actual, gap(r.total.plan, r.total.actual), pctText(pct(r.total.actual, r.total.plan))]);
+  lines.push(["Total", "", r.total.plan, r.total.actual, r.total.met, gap(r.total.plan, r.total.met), pctText(pct(r.total.met, r.total.plan))]);
   lines.push([], ["Harian"], ["Tanggal", "Aplikasi", "Jenis konten", "Rencana", "Aktual (skrip ready)"]);
   const ids = new Set(r.apps.map((a) => a.id));
   const label = Object.fromEntries(r.apps.map((a) => [a.id, a.label]));

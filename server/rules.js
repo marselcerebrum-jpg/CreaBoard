@@ -15,8 +15,8 @@ export const MAX_ROWS = { Video: 12, Carousel: 10, Singlepost: 2 };
 // Jenis skrip. Trend & Urgent dibuat mendekati tanggal upload, jadi tenggatnya H-0 (hari upload).
 export const PRIORITIES = ["Reguler", "Trend", "Urgent"];
 export const deadlineDays = (role, priority) => (priority === "Trend" || priority === "Urgent" ? 0 : DEADLINE_DAYS[role]);
-/** Skrip Trend sifatnya mendadak: tidak pernah dihitung telat. */
-export const neverLate = (priority) => priority === "Trend";
+/** Skrip Trend & Urgent sifatnya mendadak: tidak pernah dihitung telat. */
+export const neverLate = (priority) => priority === "Trend" || priority === "Urgent";
 
 export class HttpError extends Error {
   constructor(status, message, details) {
@@ -81,8 +81,9 @@ export function canSee(user, c, opts) {
 // Semua dropdown di tabel boleh diubah siapa pun yang dapat melihat konten (keputusan tim:
 // alur lebih dinamis). Urutan proses tetap dijaga applyWorkflow. Field non-dropdown tetap per peran.
 // "footage" = kolom Footage / Ilustrasi skrip (link & file): boleh diubah/ditambah semua peran.
-const DROPDOWN_FIELDS = ["app", "script_status", "talent_name", "talent_status", "creative_user_id", "creative_status", "qc_status", "footage"];
-const MARKETING_FIELDS = [...DROPDOWN_FIELDS, "type", "created_date", "upload_date", "sheet", "notes", "priority"];
+// QC hanya diisi tim Marketing (yang menilai hasil Creative), jadi tidak termasuk dropdown bersama.
+const DROPDOWN_FIELDS = ["app", "script_status", "talent_name", "talent_status", "creative_user_id", "creative_status", "footage"];
+const MARKETING_FIELDS = [...DROPDOWN_FIELDS, "qc_status", "type", "created_date", "upload_date", "sheet", "notes", "priority"];
 // Staff Creative hanya mengubah dropdown (+ link hasil, syarat wajib status Creative "Done").
 const CREATIVE_FIELDS = [...DROPDOWN_FIELDS, "link"];
 const TALENT_FIELDS = [...DROPDOWN_FIELDS, "notes"];
@@ -360,7 +361,7 @@ export async function performance(db, opts, users, month, today, viewer) {
       const trend = neverLate(c.priority);
       const status = done
         ? trend || done <= deadline ? "Tepat waktu" : "Selesai terlambat"
-        : trend ? "Trend · tidak dihitung telat" : today > deadline ? "Terlambat" : today === deadline ? "Jatuh tempo hari ini" : "Dalam tenggat";
+        : trend ? `${c.priority} · tidak dihitung telat` : today > deadline ? "Terlambat" : today === deadline ? "Jatuh tempo hari ini" : "Dalam tenggat";
       return { id: c.id, type_no: c.type_no, title: c.title, type: c.type, priority: c.priority, upload_date: c.upload_date, deadline, done, status };
     });
     const doneItems = items.filter((i) => i.done);
