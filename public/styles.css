@@ -359,13 +359,13 @@ tr:hover td { background: #FBFBF8; }
 .ft-links a { font-size: 11px; font-weight: 700; color: var(--pine); }
 
 /* ───────────── Konten kalender: alur bulanan ───────────── */
-.plan-shell { display: grid; grid-template-columns: 190px 1fr; min-height: calc(100vh - 150px); background: #fff; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; box-shadow: 0 2px 10px #344e410d; }
-.plan-nav { background: var(--forest); padding: 14px 10px; display: flex; flex-direction: column; gap: 4px; }
-.plan-nav button { display: flex; align-items: center; gap: 9px; width: 100%; padding: 11px 10px; border: 0; border-radius: 9px; background: none; color: #DDE5D6; font-size: 13px; text-align: left; }
-.plan-nav button:hover:not(.active) { background: var(--pine); color: #fff; }
-.plan-nav button.active { background: var(--sage); color: var(--forest); font-weight: 700; }
-.plan-nav .step { font-size: 10px; font-weight: 800; opacity: .7; min-width: 16px; }
-.plan-main { padding: 22px 24px 26px; min-width: 0; background: #FBFBF8; }
+.plan-shell { display: flex; flex-direction: column; gap: 16px; }
+.plan-nav { display: flex; gap: 4px; padding: 4px; background: #fff; border: 1px solid var(--line); border-radius: 12px; overflow-x: auto; align-self: flex-start; max-width: 100%; }
+.plan-nav button { display: flex; align-items: center; gap: 8px; padding: 9px 16px; border: 0; border-radius: 9px; background: none; color: var(--muted); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.plan-nav button:hover:not(.active) { background: var(--mist); color: var(--forest); }
+.plan-nav button.active { background: var(--forest); color: #fff; }
+.plan-nav .step { font-size: 10px; font-weight: 800; opacity: .6; }
+.plan-main { padding: 22px 24px 26px; min-width: 0; background: #fff; border: 1px solid var(--line); border-radius: 16px; }
 .plan-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
 .plan-head h2 { margin: 0 auto 0 0; font-size: 22px; color: var(--forest); }
 .plan-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
@@ -492,9 +492,6 @@ tr:hover td { background: #FBFBF8; }
   .mini-stats { margin-left: 0; }
 }
 @media (max-width: 760px) {
-  .plan-shell { grid-template-columns: 1fr; }
-  .plan-nav { flex-direction: row; overflow-x: auto; padding: 8px; }
-  .plan-nav button { width: auto; white-space: nowrap; }
   .plan-main { padding: 16px; }
   .stat-row { grid-template-columns: 1fr 1fr; }
   .month-grid { grid-template-columns: repeat(7, minmax(78px, 1fr)); overflow-x: auto; }
