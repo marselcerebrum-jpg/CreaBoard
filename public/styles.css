@@ -663,3 +663,6 @@ tr:hover td { background: #FBFBF8; }
 /* Kolom Aksi selalu terlihat di kanan tabel */
 .ws-table th:last-child, .ws-table td:has(> .aksi) { position: sticky; right: 0; z-index: 1; background: #fff; box-shadow: -1px 0 0 var(--line); }
 .ws-table th:last-child { z-index: 3; background: var(--mist); }
+/* Dropdown Jenis skrip */
+.cell-select.prio-Trend { background: #FCE4D6; color: #9A3B0B; border-color: #F2B694; font-weight: 700; }
+.cell-select.prio-Urgent { background: var(--danger-bg); color: var(--danger); border-color: var(--danger-line); font-weight: 700; }

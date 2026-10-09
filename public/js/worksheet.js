@@ -29,7 +29,7 @@ const ROLE_CARDS = {
 const DATELESS = ["lateScript", "lateEdit", "missed"];
 const FIELD_NAME = {
   script_status: "Info skrip", talent_name: "Talent", talent_status: "Status take", creative_user_id: "Editor",
-  creative_status: "Creative", qc_status: "QC", app: "Apps", link: "Link hasil", notes: "Catatan",
+  creative_status: "Creative", qc_status: "QC", app: "Apps", link: "Link hasil", notes: "Catatan", priority: "Jenis skrip",
 };
 
 const cardKeys = () => ROLE_CARDS[state.me.role] ?? METRICS.map((m) => m[0]);
@@ -97,6 +97,15 @@ function editorSelect(c) {
 const none = '<span class="badge b-muted">Tidak perlu</span>';
 
 const CELLS = {
+  // Jenis skrip terpisah dari status: skrip bisa "Skrip ready" sekaligus "Trend".
+  priority: {
+    head: "Jenis skrip",
+    html: (c) => {
+      const p = c.priority ?? "Reguler";
+      return `<select class="cell-select prio-${p}" aria-label="Jenis skrip #${c.id}" data-onchange="cell" data-id="${c.id}" data-field="priority" ${can(c, "priority") ? "" : "disabled"}>
+        ${["Reguler", "Trend", "Urgent"].map((x) => `<option ${x === p ? "selected" : ""}>${x}</option>`).join("")}</select>${cellError(c, "priority")}`;
+    },
+  },
   script: { head: "Status skrip", html: (c) => select(c, "script_status", "script") + stamp(c.script_ready_at) },
   talentName: { head: "Talent", html: (c) => (c.type === "Video" ? select(c, "talent_name", "talentName", "Belum ditentukan") : none) },
   take: { head: "Status take", html: (c) => (c.type === "Video" ? select(c, "talent_status", "talent") + stamp(c.talent_done_at) : none) },
@@ -137,9 +146,9 @@ const CELLS = {
 // Urutan kolom mengikuti pekerjaan tiap peran: kolom tugas sendiri di depan.
 const ORDER = {
   // Catatan tetap ada: QC "Revisi" wajib disertai catatan revisi.
-  default: ["script", "talentName", "take", "editor", "creative", "qc", "upload", "notes", "aksi"],
-  Creative: ["creative", "link", "editor", "qc", "upload", "script", "talentName", "take", "notes", "aksi"],
-  Talent: ["take", "talentName", "upload", "script", "editor", "creative", "qc", "notes", "aksi"],
+  default: ["script", "priority", "talentName", "take", "editor", "creative", "qc", "upload", "notes", "aksi"],
+  Creative: ["creative", "link", "editor", "qc", "upload", "script", "priority", "talentName", "take", "notes", "aksi"],
+  Talent: ["take", "talentName", "upload", "script", "priority", "editor", "creative", "qc", "notes", "aksi"],
 };
 const columns = () => ORDER[state.me.role] ?? ORDER.default;
 
@@ -335,6 +344,7 @@ const noOf = (id) => {
 function describe(field, value) {
   if (field === "creative_user_id") return userName(value) || "Belum ditentukan";
   if (field === "link" || field === "notes") return "";
+  if (field === "priority") return value;
   return optLabel(value) || "kosong";
 }
 
