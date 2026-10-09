@@ -60,7 +60,10 @@ export function loginThrottled(key) {
   return list.length >= 10;
 }
 export function recordLoginFailure(key) {
-  attempts.set(key, [...(attempts.get(key) ?? []), Date.now()]);
+  const now = Date.now();
+  attempts.set(key, [...(attempts.get(key) ?? []), now]);
+  // Cegah peta tumbuh tanpa batas: buang kunci yang semua percobaannya sudah kedaluwarsa.
+  if (attempts.size > 1000) for (const [k, list] of attempts) if (list.every((t) => now - t >= 15 * 60_000)) attempts.delete(k);
 }
 export function clearLoginFailures(key) {
   attempts.delete(key);

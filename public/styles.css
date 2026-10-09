@@ -1,8 +1,8 @@
 /* Content Studio — palet sage green: #344E41 · #3A5A40 · #588157 · #A3B18A · #DAD7CD
    + warna status semantik (hijau selesai, biru siap, kuning langkah berikutnya, merah revisi/terlewat). */
 :root {
-  --accent: #E8702A;   /* tombol aksi kalender (oranye) */
-  --accent-dark: #C95A18;
+  --accent: #C2510F;   /* tombol aksi (oranye; kontras teks putih ≥ 4.5:1) */
+  --accent-dark: #A4430B;
   --forest: #344E41;   /* sidebar, teks judul */
   --pine: #3A5A40;     /* aksi utama */
   --fern: #588157;     /* aksen, bar */
@@ -286,7 +286,7 @@ tr:hover td { background: #FBFBF8; }
 .team-label { padding: 8px 12px; border-radius: 8px; background: var(--sage-soft); color: var(--pine); font-weight: 600; }
 .account-apps { display: block; margin-top: 6px; color: var(--sage) !important; font-size: 11px; line-height: 1.5; }
 .app-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.app-chip { display: inline-flex; cursor: pointer; font-weight: 500; color: var(--ink); }
+.app-chip { position: relative; display: inline-flex; cursor: pointer; font-weight: 500; color: var(--ink); }
 .app-chip input { position: absolute; opacity: 0; pointer-events: none; }
 .app-chip span { padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line); background: #fff; font-size: 12px; }
 .app-chip input:checked + span { background: var(--pine); border-color: var(--pine); color: #fff; }
@@ -742,3 +742,9 @@ tr:hover td { background: #FBFBF8; }
   .ed-cap { grid-template-columns: 1fr; }
   .ed-hint { margin-left: 0; }
 }
+/* Hasil audit: toast tidak menutupi tombol di bawah jendela; kolom footage detail rapi */
+.overlay:not(.hidden) ~ .toast { bottom: 84px; }
+.ft2-up { flex-wrap: wrap; }
+.sheet .ft2 .fc-name { max-width: 100%; }
+.modal:focus { outline: none; }
+@media (max-width: 760px) { .day .plan-box input { width: 30px; } }

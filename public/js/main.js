@@ -47,9 +47,14 @@ export async function navigate(page) {
   await rerender();
 }
 
+let renderSeq = 0;
 export async function rerender() {
+  const seq = ++renderSeq;
+  const page = state.page;
   try {
-    await PAGES[state.page].render($("page"));
+    await PAGES[page].render($("page"));
+    // Render lambat milik halaman sebelumnya tidak boleh menimpa halaman yang sedang dibuka.
+    if (seq !== renderSeq && page !== state.page) await PAGES[state.page].render($("page"));
   } catch (e) {
     $("page").innerHTML = `<p class="form-error">${esc(errorText(e))}</p>`;
   }
@@ -103,7 +108,7 @@ delegate(document.body, "click", {
   settings: () => navigate("settings"),
   create: () => openContentPicker(),
   detail: (el) => openDetail(Number(el.dataset.id)),
-  "close-modal": () => closeModal(),
+  "close-modal": () => requestClose(),
   logout: async () => {
     await api("POST", "/api/logout", {}).catch(() => null);
     location.hash = "";
@@ -111,13 +116,28 @@ delegate(document.body, "click", {
   },
 });
 
+/** Tutup jendela: picu simpan otomatis kolom yang sedang diisi, dan minta konfirmasi editor bila ada perubahan. */
+function requestClose() {
+  document.activeElement?.blur?.(); // memicu "change" (mis. autosave footage di detail)
+  if (state.closeGuard && !state.closeGuard()) return;
+  closeModal();
+}
 $("overlay").addEventListener("click", (e) => {
-  if (e.target === $("overlay")) closeModal();
+  if (e.target === $("overlay")) requestClose();
 });
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !$("overlay").classList.contains("hidden")) closeModal();
+  if (e.key === "Escape" && !$("overlay").classList.contains("hidden")) requestClose();
 });
-window.addEventListener("cs:changed", () => rerender());
+// Setelah menyimpan, halaman dirender ulang — kecuali pengguna sudah pindah mengetik di kolom lain
+// (isian itu akan hilang). Dalam hal itu render ditunda sampai kolom ditinggalkan.
+let lastChanged = null;
+document.addEventListener("change", (e) => (lastChanged = e.target), true);
+window.addEventListener("cs:changed", () => {
+  const a = document.activeElement;
+  const editingOther = a && a !== lastChanged && a.closest("#page") && a.matches('[data-onchange="cell"], [data-onchange="plan"], textarea');
+  if (editingOther) pendingSync = true;
+  else rerender();
+});
 
 // ───────────── pembaruan otomatis ─────────────
 // Server mengirim sinyal setiap ada perubahan; data dimuat ulang tanpa refresh halaman.
@@ -136,6 +156,8 @@ async function syncNow() {
     return;
   }
   pendingSync = false;
+  // Tab yang dibiarkan terbuka melewati tengah malam: "hari ini" ikut berganti.
+  state.today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date());
   try {
     await reloadContents();
     // Halaman Setting tidak dirender ulang agar isian yang belum disimpan tidak hilang.

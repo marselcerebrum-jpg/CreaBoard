@@ -37,7 +37,11 @@ export function addDays(date, n) {
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
 }
-export const isDate = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`));
+export const isDate = (v) => {
+  if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const d = new Date(`${v}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v; // tolak tanggal mustahil (31 Feb)
+};
 export const stampDay = (iso) => (iso ? jakartaDate(new Date(iso)) : null);
 export const isHttpUrl = (v) => {
   if (typeof v !== "string" || !/^https?:\/\//i.test(v)) return false;
@@ -111,7 +115,7 @@ export function editableFields(user, c, opts) {
 /** Ganti hanya kolom FOOTAGE: { metaFootage: [4 teks] (Video), rows: [teks per baris] }. */
 export function mergeFootage(sheet, footage) {
   if (!sheet || !footage || typeof footage !== "object") return sheet;
-  const next = structuredClone(sheet);
+  const next = normalizeSheet(sheet.type, sheet); // sheet lama bisa tanpa metaFootage/rows
   if (sheet.type === "Video" && Array.isArray(footage.metaFootage)) next.metaFootage = next.metaFootage.map((v, i) => (typeof footage.metaFootage[i] === "string" ? footage.metaFootage[i].slice(0, 20000) : v));
   if (Array.isArray(footage.rows)) next.rows = next.rows.map((r, i) => (typeof footage.rows[i] === "string" ? { ...r, footage: footage.rows[i].slice(0, 20000) } : r));
   return next;
@@ -220,6 +224,9 @@ export function applyWorkflow(prev, next, opts, now) {
     if (next.talent_name && opts.byId.get(next.talent_name)?.key !== "talentName") errors.push("Nama talent tidak valid");
   }
   if (!opts.byId.get(next.app) || opts.byId.get(next.app).key !== "app") errors.push("Apps tidak valid");
+  for (const f of ["app", "script_status", "talent_status", "talent_name", "creative_status", "qc_status"]) {
+    if (next[f] && next[f] !== prev[f] && opts.byId.get(next[f])?.archived) errors.push(`Pilihan "${opts.byId.get(next[f]).label}" sudah dihapus dari dropdown`);
+  }
   if (!isDate(next.created_date) || !isDate(next.upload_date)) errors.push("Tanggal tidak valid");
   else if (next.upload_date < next.created_date) errors.push("Tanggal upload tidak boleh sebelum tanggal pengerjaan");
   if (errors.length) fail(422, "Data tidak valid", errors);
@@ -373,7 +380,8 @@ export async function performance(db, opts, users, month, today, viewer) {
       byType,
       target,
       done: doneItems.length,
-      remaining: Math.max(0, target - doneItems.length),
+      // Sisa = kekurangan per jenis (kelebihan satu jenis tidak menutup jenis lain).
+      remaining: TYPES.reduce((n, t) => n + Math.max(0, byType[t].target - byType[t].done), 0),
       onTimeRate: doneItems.length ? Math.round((onTime / doneItems.length) * 100) : null,
       late: items.filter((i) => i.status === "Terlambat" || i.status === "Selesai terlambat").length + missingLate,
       items,

@@ -215,7 +215,7 @@ async function dashNumbers() {
       byType, uploaded,
       doneTitle: "Skrip selesai", doneSub: "Skrip yang sudah siap untuk diproduksi.", doneIcon: "qc",
       targetSub: `Total target konten untuk ${monthName(dashMonth)}.`,
-      rate: { value: uploaded, label: "target konten" },
+      rate: { value: TYPES.reduce((x, t) => x + byType[t].actual, 0), label: "target skrip selesai" },
       alert: { need, title: "skrip perlu disiapkan", sub: `Target sampai ${fmtDate(h3.to)}.`, action: '<button class="btn wide" data-action="goto" data-page="calendar">' + icon("calendar", 16) + " Lihat kalender</button>" },
     };
   }
@@ -235,7 +235,7 @@ async function dashNumbers() {
   return {
     byType, uploaded,
     doneTitle: talent ? "Take selesai" : "Selesai diedit", doneSub: talent ? "Video yang sudah selesai take." : "Konten yang editingnya sudah selesai.", doneIcon: talent ? "talent" : "qc",
-    targetSub: `Konten dengan jadwal upload ${monthName(dashMonth)}.`,
+    targetSub: `Konten yang dijadwalkan upload ${monthName(dashMonth)}.`,
     rate: { value: done, label: talent ? "video selesai take" : "konten selesai diedit" },
     alert: {
       need, title: talent ? "video perlu take" : "konten perlu diedit", sub: `Upload sampai ${fmtDate(until)}.`,
@@ -246,6 +246,7 @@ async function dashNumbers() {
 
 export async function renderDashboard(root) {
   dashMonth ||= state.today.slice(0, 7);
+  filters.editor = ""; // dashboard tidak punya filter editor
   const n = await dashNumbers();
   const target = TYPES.reduce((x, t) => x + n.byType[t].target, 0);
   const actual = TYPES.reduce((x, t) => x + n.byType[t].actual, 0);
@@ -325,10 +326,10 @@ export async function renderWorksheet(root) {
 // ───────────── interaksi ─────────────
 const changed = () => window.dispatchEvent(new Event("cs:changed"));
 
-export async function updateContent(id, changes) {
+export async function updateContent(id, changes, { revision } = {}) {
   const c = state.contents.find((x) => x.id === id);
   try {
-    const next = await api("PATCH", `/api/contents/${id}`, { revision: c.revision, changes });
+    const next = await api("PATCH", `/api/contents/${id}`, { revision: revision ?? c.revision, changes });
     state.contents = state.contents.map((x) => (x.id === id ? next : x));
     return next;
   } catch (e) {
@@ -369,8 +370,14 @@ delegate(document.body, "change", {
     if (field === "link") value = value.trim();
     if (field === "talent_name" && value === "") value = null;
     try {
-      await updateContent(id, { [field]: value });
-      cellErrors.delete(key);
+      try {
+        await updateContent(id, { [field]: value });
+      } catch (e) {
+        // Baris baru saja diubah orang lain: terapkan ulang perubahan kolom ini ke versi terbaru.
+        if (!(e instanceof ApiError && e.status === 409)) throw e;
+        await updateContent(id, { [field]: value });
+      }
+      for (const k of [...cellErrors.keys()]) if (k.startsWith(`${id}:`)) cellErrors.delete(k);
       const label = describe(field, value);
       const undoable = !["link", "notes"].includes(field);
       const undo = {

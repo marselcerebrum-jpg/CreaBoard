@@ -143,19 +143,20 @@ export function toast(text, { action, error = false } = {}) {
   toastTimer = setTimeout(() => el.classList.add("hidden"), action || error ? 7000 : 3500);
 }
 
-export function openModal(html, { wide = false, full = false } = {}) {
+export function openModal(html, { wide = false, full = false, keepScroll = false } = {}) {
   const modal = $("modal");
   modal.innerHTML = html;
   modal.classList.toggle("video-modal", wide);
   modal.classList.toggle("full", full);
   $("overlay").classList.toggle("full", full);
   $("overlay").classList.remove("hidden");
-  modal.scrollTop = 0;
-  modal.querySelector("[autofocus]")?.focus();
+  if (!keepScroll) modal.scrollTop = 0;
+  (modal.querySelector("[autofocus]") ?? modal).focus({ preventScroll: true });
 }
 export function closeModal() {
   $("overlay").classList.add("hidden");
   $("modal").innerHTML = "";
+  state.closeGuard = null;
   state.activeId = null;
   window.dispatchEvent(new Event("cs:modal-closed"));
 }
@@ -181,16 +182,19 @@ export const contentNo = (c) => String(c.type_no ?? c.id);
 /** Teks skrip dengan **tebal**, *miring*, dan link yang bisa diklik → HTML aman (di-escape lebih dulu). */
 export function richText(s) {
   const link = (u, label) => `<a href="${u}" target="_blank" rel="noopener noreferrer" class="text-link">${label}</a>`;
+  // Tebal/miring hanya untuk teks biasa, tidak menyentuh URL (agar href tidak rusak).
+  const mark = (t) => t.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/(^|[^*\w])\*(?![\s*])(.+?)\*(?![*\w])/g, "$1<em>$2</em>");
   return esc(s)
     .split("\n")
     .map((line) => {
       const file = line.match(/^\[file\] (.+?) \| (https?:\/\/\S+)$/);
       if (file) return `<span class="file-line">📎 ${link(file[2], file[1])}</span>`;
-      return line.replace(/https?:\/\/[^\s<]+/g, (u) => link(u, u.length > 48 ? `${u.slice(0, 45)}…` : u));
+      // URL disisihkan dulu (tanda * tidak termasuk URL), format diterapkan, lalu URL dikembalikan sebagai link.
+      const urls = [];
+      const masked = line.replace(/https?:\/\/[^\s<*]+/g, (u) => ` ${urls.push(u) - 1} `);
+      return mark(masked).replace(/ (\d+) /g, (_, i) => link(urls[i], urls[i].length > 48 ? `${urls[i].slice(0, 45)}…` : urls[i]));
     })
-    .join("\n")
-    .replace(/\*\*(.+?)\*\*/gs, "<strong>$1</strong>")
-    .replace(/(^|[^*])\*(?!\s)(.+?)\*(?!\*)/gs, "$1<em>$2</em>");
+    .join("\n");
 }
 
 /** Semua teks skrip (judul, brief, caption, catatan) untuk pencarian menyeluruh. */

@@ -362,7 +362,8 @@ let tableScroll = null; // posisi geser tabel dipertahankan saat data diperbarui
 
 function exportCsv() {
   const r = compute();
-  const cell = (v) => `"${String(v).replace(/"/g, '""')}"`;
+  // Sel yang diawali = + - @ diberi tanda ' agar tidak dibaca sebagai rumus oleh Excel.
+  const cell = (v) => `"${String(v).replace(/^([=+\-@])/, "'$1").replace(/"/g, '""')}"`;
   const lines = [[`Laporan rencana vs aktual · ${monthLabel(month)}`], [], ["Aplikasi", "Jenis konten", "Rencana", "Aktual (skrip ready)", "Selisih", "Pencapaian"]];
   for (const a of r.apps) {
     for (const t of TYPES) {
@@ -403,8 +404,9 @@ const closePop = () => {
 async function savePlan(body) {
   try {
     await api("PUT", "/api/calendar/plan", body);
+    toast("color" in body ? "Warna rencana disimpan" : "Rencana disimpan");
   } catch (e) {
-    toast(errorText(e));
+    toast(errorText(e), { error: true });
   }
   changed();
 }

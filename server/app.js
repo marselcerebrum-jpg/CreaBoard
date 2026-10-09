@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, readFile, stat, unlink } from "node:fs/promises";
-import { extname, join, normalize, sep } from "node:path";
+import { extname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 import { pipeline } from "node:stream/promises";
 import {
   clearLoginFailures, createSession, destroySession, destroyUserSessions, hashPassword, loginThrottled,
@@ -44,8 +44,16 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
   const broadcast = (what) => {
     for (const res of streams) res.write(`data: ${JSON.stringify({ what, at: Date.now() })}\n\n`);
   };
-  setInterval(() => {
-    for (const res of streams) res.write(": ping\n\n");
+  // Ping berkala sekaligus menutup stream yang sesinya sudah berakhir (logout / akun dinonaktifkan).
+  setInterval(async () => {
+    for (const res of streams) {
+      const alive = await sessionUser(db, res.sessionToken).catch(() => null);
+      if (alive) res.write(": ping\n\n");
+      else {
+        streams.delete(res);
+        res.end();
+      }
+    }
   }, 25_000).unref();
 
   // ───────────── helpers (q = db atau transaksi) ─────────────
@@ -91,7 +99,7 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
   };
   const userExists = async (q, id, role) =>
     id == null || Boolean(await q.one("select 1 from users where id = ? and active = 1 and role = ?", [Number(id), role]));
-  const monthOf = (query) => (/^\d{4}-\d{2}$/.test(query.month ?? "") ? query.month : today().slice(0, 7));
+  const monthOf = (query) => (/^\d{4}-(0[1-9]|1[0-2])$/.test(query.month ?? "") ? query.month : today().slice(0, 7));
 
   // ───────────── auth ─────────────
   route("POST", "/api/login", async ({ body, req, res }) => {
@@ -226,6 +234,13 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
         `update contents set ${CONTENT_COLS.map((c) => `${c} = ?`).join(", ")}, sheet = ?, revision = revision + 1, updated_at = ? where id = ?`,
         [...CONTENT_COLS.map((c) => next[c] ?? null), JSON.stringify(next.sheet), nowIso(), prev.id],
       );
+      if (next.type !== prev.type) {
+        // Nomor per jenis: pindah jenis = nomor baru di jenis tujuan.
+        await q.query("select pg_advisory_xact_lock(hashtext(?))", [`creaboard:type_no:${next.type}`]);
+        const { n } = await q.one("select coalesce(max(type_no), 0)::int + 1 n from contents where type = ?", [next.type]);
+        await q.run("update contents set type_no = ? where id = ?", [n, prev.id]);
+      }
+      if (next.type !== prev.type || next.app !== prev.app) await q.run("update footage set app = ?, type = ? where content_id = ?", [next.app, next.type, prev.id]);
       const sheetChanged = JSON.stringify(prev.sheet) !== JSON.stringify(next.sheet);
       await logEvents(q, prev.id, user.id, prev, next, [...CONTENT_COLS.filter((c) => !c.endsWith("_at") && c !== "title"), ...(sheetChanged ? ["sheet"] : [])]);
       return present(await loadContent(q, prev.id), user, opts);
@@ -266,10 +281,10 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
     const c = await visibleContent(db, user, params.id, opts);
     if (!canDeleteContent(user, c, opts)) fail(403, "Hanya Leader Marketing, atau Marketing pemilik skrip yang belum diproduksi, yang dapat menghapus skrip");
     // Hapus permanen: riwayat ikut terhapus (cascade), file footage yang diunggah ikut dibuang.
-    const files = await db.query("select file_path from footage where content_id = ? and kind = 'file'", [c.id]);
-    await db.tx(async (q) => {
-      await q.run("delete from footage where content_id = ?", [c.id]);
+    const files = await db.tx(async (q) => {
+      const removed = await q.query("delete from footage where content_id = ? returning kind, file_path", [c.id]);
       await q.run("delete from contents where id = ?", [c.id]);
+      return removed.filter((f) => f.kind === "file");
     });
     if (uploadDir) for (const f of files) await unlink(join(uploadDir, f.file_path)).catch(() => {});
     return { ok: true };
@@ -457,6 +472,8 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
     const target = await db.one("select * from users where id = ?", [Number(params.id) || 0]);
     if (!target) fail(404, "Akun tidak ditemukan");
     if (target.id === user.id && (body.active === false || body.position === "Staff")) fail(422, "Anda tidak bisa menonaktifkan/menurunkan akun sendiri");
+    if (target.id === user.id && body.role !== undefined && body.role !== target.role) fail(422, "Anda tidak bisa mengubah peran akun sendiri");
+    if (target.id !== user.id && target.position === "Leader") fail(403, "Akun Leader lain hanya bisa diubah oleh pemilik akunnya");
     const next = {
       name: body.name !== undefined ? String(body.name).trim().slice(0, 100) || target.name : target.name,
       position: ["Leader", "Staff"].includes(body.position) ? body.position : target.position,
@@ -464,6 +481,9 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
       active: typeof body.active === "boolean" ? Number(body.active) : target.active,
     };
     if (next.position === "Leader" && next.role === "Talent") fail(422, "Leader hanya untuk Marketing atau Creative");
+    if ((next.role !== target.role || next.position !== target.position) && (await db.one("select 1 from kpis where user_id = ? limit 1", [target.id]))) {
+      fail(409, `${target.name} masih punya target KPI. Hapus targetnya dulu di Target KPI sebelum mengubah peran/posisi.`);
+    }
     if (body.password) {
       const err = validatePassword(body.password);
       if (err) fail(422, err);
@@ -502,6 +522,7 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
     const opts = await optionIndex(db);
     let { app, type } = body;
     const contentId = body.content_id ? Number(body.content_id) : null;
+    if (contentId !== null && !Number.isInteger(contentId)) fail(422, "Konten tidak valid");
     if (contentId) {
       const c = await visibleContent(db, user, contentId, opts);
       app = c.app;
@@ -511,7 +532,17 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
     return { app, type, contentId };
   };
 
-  route("GET", "/api/footage", async ({ query }) => {
+  /** Footage boleh dilihat bila kontennya boleh dilihat; footage tanpa konten: pengunggah atau Leader. */
+  const footageVisible = async (user, f, opts, cache = new Map()) => {
+    if (!f.content_id) return isLeader(user) || f.uploaded_by === user.id;
+    if (!cache.has(f.content_id)) {
+      const c = await loadContent(db, f.content_id);
+      cache.set(f.content_id, Boolean(c && canSee(user, c, opts)));
+    }
+    return cache.get(f.content_id);
+  };
+
+  route("GET", "/api/footage", async ({ user, query }) => {
     const conds = [];
     const params = [];
     if (query.app) conds.push("f.app = ?"), params.push(query.app);
@@ -523,7 +554,11 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
        ${conds.length ? `where ${conds.join(" and ")}` : ""} order by f.id desc limit 500`,
       params,
     );
-    return rows.map(({ file_path, ...f }) => f);
+    const opts = await optionIndex(db);
+    const cache = new Map();
+    const out = [];
+    for (const f of rows) if (await footageVisible(user, f, opts, cache)) out.push(f);
+    return out.map(({ file_path, ...f }) => f);
   });
 
   route("POST", "/api/footage", async ({ user, body }) => {
@@ -563,10 +598,16 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
       await unlink(abs).catch(() => {});
       fail(400, "Unggahan terputus. Coba lagi.");
     }
-    const row = await db.one(
-      "insert into footage (content_id, app, type, kind, title, file_path, mime, size, uploaded_by) values (?, ?, ?, 'file', ?, ?, ?, ?, ?) returning id",
-      [contentId, app, type, name, rel, mime, written, user.id],
-    );
+    let row;
+    try {
+      row = await db.one(
+        "insert into footage (content_id, app, type, kind, title, file_path, mime, size, uploaded_by) values (?, ?, ?, 'file', ?, ?, ?, ?, ?) returning id",
+        [contentId, app, type, name, rel, mime, written, user.id],
+      );
+    } catch (e) {
+      await unlink(abs).catch(() => {}); // jangan tinggalkan file tanpa catatan
+      throw e;
+    }
     return { id: row.id, url: `/api/footage/${row.id}/file`, title: name };
   }, { raw: true });
 
@@ -580,11 +621,13 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
     return { ok: true };
   });
 
-  route("GET", "/api/footage/:id/file", async ({ params, res, query }) => {
+  route("GET", "/api/footage/:id/file", async ({ user, params, res, query }) => {
     const f = await db.one("select * from footage where id = ? and kind = 'file'", [Number(params.id) || 0]);
-    if (!f || !uploadDir) fail(404, "File tidak ditemukan");
-    const abs = normalize(join(uploadDir, f.file_path));
-    if (!abs.startsWith(normalize(uploadDir) + sep)) fail(404, "File tidak ditemukan");
+    if (!f || !uploadDir || !(await footageVisible(user, f, await optionIndex(db)))) fail(404, "File tidak ditemukan");
+    const base = resolve(uploadDir);
+    const abs = resolve(base, f.file_path);
+    const rel = relative(base, abs);
+    if (!rel || rel.startsWith("..") || isAbsolute(rel)) fail(404, "File tidak ditemukan");
     const st = await stat(abs).catch(() => null);
     if (!st) fail(404, "File tidak ditemukan");
     res.writeHead(200, {
@@ -624,9 +667,10 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
     return { ok: true };
   });
 
-  route("GET", "/api/stream", async ({ req, res }) => {
+  route("GET", "/api/stream", async ({ req, res, token }) => {
     res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-store", Connection: "keep-alive", "X-Accel-Buffering": "no" });
     res.write("retry: 5000\n\n");
+    res.sessionToken = token;
     streams.add(res);
     req.on("close", () => streams.delete(res));
     return SENT;
@@ -699,7 +743,14 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
   });
 
   // ───────────── HTTP ─────────────
-  const parseCookies = (h = "") => Object.fromEntries(h.split(";").map((p) => p.trim().split("=")).filter((p) => p[0]).map(([k, ...v]) => [k, decodeURIComponent(v.join("="))]));
+  const safeDecode = (v) => {
+    try {
+      return decodeURIComponent(v);
+    } catch {
+      return v; // cookie lain yang tidak valid tidak boleh membuat semua request gagal
+    }
+  };
+  const parseCookies = (h = "") => Object.fromEntries(h.split(";").map((p) => p.trim().split("=")).filter((p) => p[0]).map(([k, ...v]) => [k, safeDecode(v.join("="))]));
 
   async function readBody(req) {
     const chunks = [];
@@ -710,15 +761,18 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
       chunks.push(ch);
     }
     if (!chunks.length) return {};
+    let data;
     try {
-      return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      data = JSON.parse(Buffer.concat(chunks).toString("utf8"));
     } catch {
       fail(400, "Body harus JSON");
     }
+    if (!data || typeof data !== "object" || Array.isArray(data)) fail(400, "Body harus objek JSON");
+    return data;
   }
 
   async function serveStatic(req, res, pathname) {
-    const file = normalize(join(publicDir, pathname === "/" ? "index.html" : decodeURIComponent(pathname)));
+    const file = normalize(join(publicDir, pathname === "/" ? "index.html" : safeDecode(pathname)));
     if (!file.startsWith(normalize(publicDir) + sep) && file !== normalize(join(publicDir, "index.html"))) return false;
     try {
       const s = await stat(file);
@@ -759,7 +813,7 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
       const user = await sessionUser(db, token);
       if (user) user.apps = await appsOf(db, user.id);
       if (match.auth && !user) return send(401, { error: "Silakan login" });
-      const params = Object.fromEntries(match.keys.map((k, i) => [k, decodeURIComponent(url.pathname.match(match.re)[i + 1])]));
+      const params = Object.fromEntries(match.keys.map((k, i) => [k, safeDecode(url.pathname.match(match.re)[i + 1])]));
       const body = req.method === "GET" || match.raw ? {} : await readBody(req);
       const result = await match.handler({ req, res, user, token, params, body, query: Object.fromEntries(url.searchParams) });
       if (result === SENT) return;

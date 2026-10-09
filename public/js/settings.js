@@ -106,15 +106,18 @@ async function showUsers() {
     <div class="panel" style="margin-top:14px;overflow:auto"><table class="users-table"><thead><tr><th>Nama</th><th>Posisi</th><th>Peran</th><th>Apps</th><th>Status</th><th></th></tr></thead><tbody>
       ${users.map((u) => {
         const editableApps = manages(u.position, u.role);
+        // Akun sendiri: posisi/peran terkunci. Akun Leader lain hanya bisa diubah pemiliknya.
+        const otherLeader = u.position === "Leader" && u.id !== state.me.id;
+        const lock = u.id === state.me.id || otherLeader ? "disabled" : "";
         const appsCell = editableApps
           ? appChips("", u.apps, { userId: u.id })
           : hasApps(u.position, u.role) ? esc(u.apps.map(optLabel).join(", ")) || '<span class="muted-inline">—</span>' : "";
         return `<tr><td><b>${esc(u.name)}</b><div class="t-meta">${esc(u.username)}</div></td>
-        <td><select data-onchange="user-field" data-id="${u.id}" data-field="position" ${u.id === state.me.id ? "disabled" : ""}><option ${u.position === "Staff" ? "selected" : ""}>Staff</option><option ${u.position === "Leader" ? "selected" : ""}>Leader</option></select></td>
-        <td><select data-onchange="user-field" data-id="${u.id}" data-field="role" ${u.id === state.me.id ? "disabled" : ""}><option ${u.role === "Marketing" ? "selected" : ""}>Marketing</option><option ${u.role === "Creative" ? "selected" : ""}>Creative</option><option ${u.role === "Talent" ? "selected" : ""}>Talent</option></select></td>
+        <td><select aria-label="Posisi ${esc(u.name)}" data-onchange="user-field" data-id="${u.id}" data-field="position" ${lock}><option ${u.position === "Staff" ? "selected" : ""}>Staff</option><option ${u.position === "Leader" ? "selected" : ""}>Leader</option></select></td>
+        <td><select aria-label="Peran ${esc(u.name)}" data-onchange="user-field" data-id="${u.id}" data-field="role" ${lock}><option ${u.role === "Marketing" ? "selected" : ""}>Marketing</option><option ${u.role === "Creative" ? "selected" : ""}>Creative</option><option ${u.role === "Talent" ? "selected" : ""}>Talent</option></select></td>
         <td class="apps-cell">${appsCell}</td>
-        <td>${u.id === state.me.id ? "Aktif" : `<select data-onchange="user-field" data-id="${u.id}" data-field="active"><option value="1" ${u.active ? "selected" : ""}>Aktif</option><option value="0" ${u.active ? "" : "selected"}>Nonaktif</option></select>`}</td>
-        <td><button class="btn mini" data-action="user-reset" data-id="${u.id}" data-name="${esc(u.name)}">Reset password</button></td></tr>`;
+        <td>${u.id === state.me.id || otherLeader ? (u.active ? "Aktif" : "Nonaktif") : `<select aria-label="Status ${esc(u.name)}" data-onchange="user-field" data-id="${u.id}" data-field="active"><option value="1" ${u.active ? "selected" : ""}>Aktif</option><option value="0" ${u.active ? "" : "selected"}>Nonaktif</option></select>`}</td>
+        <td>${otherLeader ? '<span class="small">Leader lain</span>' : `<button class="btn mini" data-action="user-reset" data-id="${u.id}" data-name="${esc(u.name)}">Reset password</button>`}</td></tr>`;
       }).join("")}
     </tbody></table></div>`);
   newUserApps();

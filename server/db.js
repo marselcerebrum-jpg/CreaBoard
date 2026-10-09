@@ -211,9 +211,17 @@ export async function migrate(db) {
   await db.run("delete from user_apps where user_id in (select id from users where role <> 'Marketing' or position <> 'Staff')");
   await db.run("update options set category = label where category is null");
   // Isi nomor per jenis untuk konten lama (urut id).
+  // Isi nomor per jenis untuk konten tanpa nomor (lanjut dari nomor terbesar), lalu rapikan nomor ganda.
   await db.run(`update contents c set type_no = r.n from (
-      select id, row_number() over (partition by type order by id) n from contents) r
-    where r.id = c.id and c.type_no is null`);
+      select id, (select coalesce(max(type_no), 0) from contents m where m.type = x.type)
+        + row_number() over (partition by type order by id) n
+      from contents x where type_no is null) r
+    where r.id = c.id`);
+  await db.run(`update contents c set type_no = r.n from (
+      select id, (select max(type_no) from contents m where m.type = d.type) + row_number() over (partition by type order by id) n
+      from (select id, type, row_number() over (partition by type, type_no order by id) dup from contents) d where dup > 1) r
+    where r.id = c.id`);
+  await db.exec("create unique index if not exists contents_type_no_uq on contents(type, type_no)");
   const { n } = await db.one("select count(*)::int n from options");
   if (n === 0) {
     for (const [key, list] of Object.entries(DEFAULT_OPTIONS)) {
