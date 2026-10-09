@@ -37,6 +37,9 @@ export async function navigate(page) {
   state.page = page;
   state.stage = "";
   $("pageTitle").textContent = pageTitle(page);
+  // Subjudul & alat di header diisi halaman yang membutuhkan (mis. Dashboard).
+  $("pageSub").classList.add("hidden");
+  $("headTools").innerHTML = "";
   $("createButton").classList.toggle("hidden", !(page === "create" && state.me.role === "Marketing"));
   document.querySelectorAll("#nav button").forEach((b) => b.classList.toggle("active", b.dataset.page === page));
   $("settingsBtn").classList.toggle("active", page === "settings");

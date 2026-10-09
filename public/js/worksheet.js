@@ -15,8 +15,8 @@ const METRICS = [
   ["qc", "Menunggu QC", "Hasil selesai, QC kosong", "qc"],
   ["revision", "Perlu revisi", "Hasil QC: revisi", "revision"],
   ["upload", "Siap upload", "QC done, belum tayang", "upload"],
-  ["lateScript", "Telat", "Skrip belum ready, lewat H-3", "late"],
-  ["lateEdit", "Telat", "Edit belum selesai, lewat H-1", "late"],
+  ["lateScript", "Terlambat", "Skrip belum ready, lewat H-3", "late"],
+  ["lateEdit", "Terlambat", "Edit belum selesai, lewat H-1", "late"],
   ["missed", "Terlewat", "Upload lewat, belum tayang", "missed"],
 ];
 // Kartu dibedakan per bidang (berlaku juga untuk Leader di bidang tersebut).
@@ -97,7 +97,7 @@ function editorSelect(c) {
 const none = '<span class="badge b-muted">Tidak perlu</span>';
 
 const CELLS = {
-  script: { head: "Info skrip", html: (c) => select(c, "script_status", "script") + stamp(c.script_ready_at) },
+  script: { head: "Status skrip", html: (c) => select(c, "script_status", "script") + stamp(c.script_ready_at) },
   talentName: { head: "Talent", html: (c) => (c.type === "Video" ? select(c, "talent_name", "talentName", "Belum ditentukan") : none) },
   take: { head: "Status take", html: (c) => (c.type === "Video" ? select(c, "talent_status", "talent") + stamp(c.talent_done_at) : none) },
   editor: { head: "Editor", html: editorSelect },
@@ -113,11 +113,21 @@ const CELLS = {
   upload: {
     head: "Upload",
     html: (c) => {
+      const late = state.me.role === "Marketing" ? c.flags.lateScript : c.flags.lateEdit;
       const chip = c.flags.published
-        ? `<span class="badge b-done">Tayang ${esc(fmtDate(c.published_date))}</span>`
-        : c.flags.missed ? '<span class="badge b-danger">Terlewat</span>' : c.upload_date === state.today ? '<span class="badge b-warn">Hari ini</span>' : "";
-      return `<div class="nowrap">${fmtDate(c.upload_date)}</div>${chip ? `<div class="cell-time">${chip}</div>` : ""}`;
+        ? `<span class="badge b-done" title="Tayang ${esc(fmtDate(c.published_date))}">Tayang</span>`
+        : c.flags.missed ? '<span class="badge b-danger">Terlewat</span>'
+        : late ? '<span class="badge b-late">Terlambat</span>'
+        : c.upload_date === state.today ? '<span class="badge b-warn">Hari ini</span>' : "";
+      return `<div class="nowrap up-date">${fmtDate(c.upload_date)}</div>${chip ? `<div class="cell-time">${chip}</div>` : ""}`;
     },
+  },
+  aksi: {
+    head: "Aksi",
+    html: (c) => `<div class="aksi">${/^https?:\/\//i.test(c.link)
+      ? `<a class="icon-act" href="${esc(c.link)}" target="_blank" rel="noopener noreferrer" title="Buka link hasil" aria-label="Buka link hasil ${esc(c.title)}">${icon("link", 16)}</a>`
+      : `<span class="icon-act off" title="Belum ada link hasil">${icon("link", 16)}</span>`}
+      <button class="icon-act" data-action="detail" data-id="${c.id}" title="Detail skrip" aria-label="Detail ${esc(c.title)}">${icon("more", 16)}</button></div>`,
   },
   notes: {
     head: "Catatan",
@@ -126,11 +136,15 @@ const CELLS = {
 };
 // Urutan kolom mengikuti pekerjaan tiap peran: kolom tugas sendiri di depan.
 const ORDER = {
-  default: ["script", "talentName", "take", "editor", "creative", "link", "qc", "upload", "notes"],
-  Creative: ["creative", "link", "qc", "upload", "editor", "script", "talentName", "take", "notes"],
-  Talent: ["take", "talentName", "upload", "script", "editor", "creative", "link", "qc", "notes"],
+  // Catatan tetap ada: QC "Revisi" wajib disertai catatan revisi.
+  default: ["script", "talentName", "take", "editor", "creative", "qc", "upload", "notes", "aksi"],
+  Creative: ["creative", "link", "editor", "qc", "upload", "script", "talentName", "take", "notes", "aksi"],
+  Talent: ["take", "talentName", "upload", "script", "editor", "creative", "qc", "notes", "aksi"],
 };
 const columns = () => ORDER[state.me.role] ?? ORDER.default;
+
+const TYPE_ICON = { Video: "edit", Carousel: "layers", Singlepost: "image" };
+const contentCell = (c) => `<div class="k-cell"><span class="k-tile k-${c.type}">${icon(TYPE_ICON[c.type], 18)}</span><div>${titleCell(c)}</div></div>`;
 
 function titleCell(c) {
   const prio = c.priority && c.priority !== "Reguler" ? ` <span class="badge b-prio">${esc(c.priority)}</span>` : "";
@@ -140,13 +154,13 @@ function titleCell(c) {
 function tableHtml(rows) {
   const cols = columns();
   const body = rows.length
-    ? rows.map((c) => `<tr><td class="sticky-a open-cell" data-action="detail" data-id="${c.id}"><button class="number" aria-label="Buka skrip ${esc(c.title)}">${esc(contentNo(c))}</button></td><td class="sticky-b open-cell" data-action="detail" data-id="${c.id}" title="Buka skrip">${titleCell(c)}</td>${cols.map((k) => `<td>${CELLS[k].html(c)}</td>`).join("")}</tr>`).join("")
+    ? rows.map((c) => `<tr><td class="sticky-a open-cell" data-action="detail" data-id="${c.id}"><button class="number" aria-label="Buka skrip ${esc(c.title)}">${esc(contentNo(c))}</button></td><td class="sticky-b open-cell" data-action="detail" data-id="${c.id}" title="Buka skrip">${contentCell(c)}</td>${cols.map((k) => `<td>${CELLS[k].html(c)}</td>`).join("")}</tr>`).join("")
     : `<tr><td colspan="${cols.length + 2}" class="empty">Tidak ada konten yang cocok. Ubah filter atau buat konten baru.</td></tr>`;
   const cards = rows.length
     ? rows.map((c) => `<article class="ws-card"><header class="open-cell" data-action="detail" data-id="${c.id}"><button class="number">${esc(contentNo(c))}</button><div>${titleCell(c)}</div></header>
         <dl>${cols.map((k) => `<div><dt>${CELLS[k].head}</dt><dd>${CELLS[k].html(c)}</dd></div>`).join("")}</dl></article>`).join("")
     : '<p class="empty">Tidak ada konten yang cocok.</p>';
-  return `<div class="tablewrap ws-table"><table><thead><tr><th class="sticky-a">No.</th><th class="sticky-b">USP/Keyword</th>${cols.map((k) => `<th>${CELLS[k].head}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div>
+  return `<div class="tablewrap ws-table"><table><thead><tr><th class="sticky-a">No.</th><th class="sticky-b">Konten · USP/Keyword</th>${cols.map((k) => `<th>${CELLS[k].head}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div>
     <div class="ws-cards">${cards}</div>`;
 }
 
@@ -155,60 +169,138 @@ function worksheetSection(title, rows, subtitle) {
     <div class="tablehead"><div><h2>${esc(title)}</h2><span class="small">${esc(subtitle)}</span></div>
       <input class="search" type="search" placeholder="Cari judul atau isi skrip…" value="${esc(filters.search)}" data-onchange="filter" data-key="search" aria-label="Cari konten"></div>
     ${tableHtml(rows)}
-    <div class="legend"><span class="badge b-attn">Kuning</span><span class="small">langkah berikutnya</span><span class="badge b-done">Hijau</span><span class="small">selesai</span><span class="badge b-danger">Merah</span><span class="small">revisi / terlewat</span></div>
+    <div class="q-legend">
+      <span><i class="ld ld-todo"></i><b>Perlu tindakan</b><small>Perlu segera ditindaklanjuti</small></span>
+      <span><i class="ld ld-done"></i><b>Selesai</b><small>Sudah sesuai target</small></span>
+      <span><i class="ld ld-late"></i><b>Terlambat</b><small>${state.me.role === "Marketing" ? "Skrip belum ready lewat H-3" : "Edit belum selesai lewat H-1"}</small></span>
+      <span><i class="ld ld-missed"></i><b>Terlewat</b><small>Tanggal upload lewat, belum tayang</small></span></div>
   </section>`;
 }
 
 // ───────────── halaman ─────────────
-export async function renderDashboard(root) {
-  const keys = cardKeys();
-  const showTarget = state.me.role === "Marketing";
-  const h3 = showTarget ? await api("GET", `/api/targets/h3${filters.app ? `?app=${encodeURIComponent(filters.app)}` : ""}`) : null;
-  const inRange = state.contents.filter((c) => scoped(c));
-  const cards = METRICS.filter((m) => keys.includes(m[0]))
-    .map(([key, title, sub, ic]) => {
-      const n = state.contents.filter((c) => scoped(c, { useDates: !DATELESS.includes(key) }) && c.flags[key]).length;
-      return `<button class="card ${state.stage === key ? "selected" : ""} ${DATELESS.includes(key) && n ? "alert" : ""}" data-action="stage" data-stage="${key}" aria-pressed="${state.stage === key}" title="${esc(sub)}">
-        <span class="card-top"><span class="card-title">${title}</span>${icon(ic, 16)}</span><span class="num">${n}</span></button>`;
-    })
-    .join("");
-  const short = h3 ? TYPES.map((t) => ({ t, ...h3.byType[t] })).filter((x) => x.remaining > 0) : [];
-  const totalShort = short.reduce((n, x) => n + x.remaining, 0);
-  const reminder = totalShort
-    ? `<div class="target-reminder" role="status"><div class="reminder-text">${icon("late", 16)}<b>${totalShort} skrip lagi</b> untuk target sampai ${fmtDate(h3.to)} (H+3):
-        ${short.map((x) => `<span class="chip">${typeLabel(x.t)} ${x.remaining}</span>`).join("")}</div>
-        <div class="target-reminder-actions"><button class="btn mini" data-action="goto" data-page="calendar">Lihat kalender</button><button class="btn mini primary" data-action="goto" data-page="create">Buat skrip</button></div></div>`
-    : "";
-  const composition = TYPES.map((t) => {
-    const n = inRange.filter((c) => c.type === t).length;
-    return `<div class="barrow"><span>${typeLabel(t)}</span><div class="bar"><i style="width:${inRange.length ? (n / inRange.length) * 100 : 0}%"></i></div><b>${n}</b></div>`;
-  }).join("");
-  const targetPanel = h3
-    ? `<div class="panel"><h2>Sisa target skrip · H+3</h2>
-        <div class="script-target-cards">${TYPES.map((t) => `<div class="script-target"><span>${typeLabel(t)}</span><strong>${h3.byType[t].remaining}</strong><small>dari ${h3.byType[t].plan}</small></div>`).join("")}</div></div>`
-    : leads("Creative") ? workloadPanel()
-    : `<div class="panel"><h2>Ringkasan</h2><div class="summary-nums"><div><strong>${inRange.length}</strong><span>konten</span></div><div><strong>${inRange.filter((c) => c.flags.published).length}</strong><span>sudah tayang</span></div></div></div>`;
-  const rows = visibleRows();
-  const title = state.stage ? METRICS.find((m) => m[0] === state.stage)[1] : "Antrean produksi";
-  // Urutan: notifikasi → komposisi & target → filter → kartu → antrean.
-  root.innerHTML = `${reminder}
-    <div class="panels"><div class="panel"><h2>Komposisi konten</h2>${composition}</div>${targetPanel}</div>
-    ${filterBar({ withEditor: false })}<div class="cards">${cards}</div>
-    ${worksheetSection(title, rows, `${rows.length} konten`)}`;
+let dashMonth = "";
+const monthName = (m) => {
+  const [y, mm] = m.split("-").map(Number);
+  return new Intl.DateTimeFormat("id-ID", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(y, mm - 1, 1)));
+};
+const pctOf = (a, b) => (b ? Math.round((a / b) * 100) : 0);
+
+/** Angka bulan ini per bidang: Marketing = skrip, Creative = editing, Talent = take. */
+async function dashNumbers() {
+  const role = state.me.role;
+  const inMonth = (d) => Boolean(d) && d.slice(0, 7) === dashMonth;
+  const byType = Object.fromEntries(TYPES.map((t) => [t, { target: 0, actual: 0 }]));
+  const uploaded = state.contents.filter((c) => inMonth(c.published_date)).length;
+  if (role === "Marketing") {
+    const [cal, h3] = await Promise.all([api("GET", `/api/calendar?month=${dashMonth}`), api("GET", "/api/targets/h3")]);
+    const scope = myApps();
+    const ok = (app) => !scope.length || scope.includes(app);
+    for (const p of cal.plans) if (ok(p.app) && p.amount != null) byType[p.type].target += p.amount;
+    for (const [k, n] of Object.entries(cal.actuals)) {
+      const [app, type] = JSON.parse(k);
+      if (ok(app)) byType[type].actual += n;
+    }
+    const need = Object.fromEntries(TYPES.map((t) => [t, h3.byType[t].remaining]));
+    return {
+      byType, uploaded,
+      doneTitle: "Skrip selesai", doneSub: "Skrip yang sudah siap untuk diproduksi.", doneIcon: "qc",
+      targetSub: `Total target konten untuk ${monthName(dashMonth)}.`,
+      rate: { value: uploaded, label: "target konten" },
+      alert: { need, title: "skrip perlu disiapkan", sub: `Target sampai ${fmtDate(h3.to)}.`, action: '<button class="btn wide" data-action="goto" data-page="calendar">' + icon("calendar", 16) + " Lihat kalender</button>" },
+    };
+  }
+  const talent = role === "Talent";
+  const rows = state.contents.filter((c) => inMonth(c.upload_date) && (!talent || (c.type === "Video" && sem(c.talent_status) !== "Tidak perlu")));
+  for (const c of rows) {
+    byType[c.type].target++;
+    if (talent ? sem(c.talent_status) === "Done" : sem(c.creative_status) === "Done") byType[c.type].actual++;
+  }
+  const until = new Date(Date.parse(`${state.today}T12:00:00Z`) + 3 * 864e5).toISOString().slice(0, 10);
+  const need = Object.fromEntries(TYPES.map((t) => [t, 0]));
+  for (const c of state.contents) {
+    if (c.upload_date > until) continue;
+    if (talent ? c.flags.talent : c.flags.edit || c.flags.revision) need[c.type]++;
+  }
+  const done = TYPES.reduce((n, t) => n + byType[t].actual, 0);
+  return {
+    byType, uploaded,
+    doneTitle: talent ? "Take selesai" : "Selesai diedit", doneSub: talent ? "Video yang sudah selesai take." : "Konten yang editingnya sudah selesai.", doneIcon: talent ? "talent" : "qc",
+    targetSub: `Konten dengan jadwal upload ${monthName(dashMonth)}.`,
+    rate: { value: done, label: talent ? "video selesai take" : "konten selesai diedit" },
+    alert: {
+      need, title: talent ? "video perlu take" : "konten perlu diedit", sub: `Upload sampai ${fmtDate(until)}.`,
+      action: `<button class="btn wide" data-action="stage" data-stage="${talent ? "talent" : "edit"}">${icon("edit", 16)} Lihat antrean</button>`,
+    },
+  };
 }
 
-/** Leader Creative: beban per editor (konten belum selesai vs selesai). */
-function workloadPanel() {
-  const rows = usersByRole("Creative").filter((u) => u.position === "Staff").map((u) => {
-    const mine = state.contents.filter((c) => c.creative_user_id === u.id && scoped(c) && !c.flags.published);
-    const open = mine.filter((c) => sem(c.creative_status) !== "Done").length;
-    return { u, open, done: mine.length - open, late: mine.filter((c) => c.flags.lateEdit || c.flags.missed).length };
-  });
-  const unassigned = state.contents.filter((c) => !c.creative_user_id && scoped(c) && !c.flags.published).length;
-  const max = Math.max(1, ...rows.map((r) => r.open + r.done));
-  return `<div class="panel"><h2>Beban editor</h2>${unassigned ? `<span class="badge b-warn">${unassigned} belum punya editor</span>` : ""}
-    ${rows.map((r) => `<div class="barrow"><span>${esc(r.u.name)}</span><div class="bar"><i style="width:${((r.open + r.done) / max) * 100}%"></i></div><b>${r.open} antre</b>${r.late ? `<span class="badge b-danger">${r.late} telat</span>` : ""}</div>`).join("") || '<p class="small">Belum ada staff Creative.</p>'}</div>`;
+export async function renderDashboard(root) {
+  dashMonth ||= state.today.slice(0, 7);
+  const n = await dashNumbers();
+  const target = TYPES.reduce((x, t) => x + n.byType[t].target, 0);
+  const actual = TYPES.reduce((x, t) => x + n.byType[t].actual, 0);
+  const rate = pctOf(n.rate.value, target);
+  // Header: subjudul, pilihan bulan, tombol buat skrip (Marketing).
+  $id("pageSub").textContent = "Perencanaan dan aktual konten dalam satu tempat.";
+  $id("pageSub").classList.remove("hidden");
+  $id("headTools").innerHTML = `<label class="month-pick">${icon("calendar", 16)}<input type="month" value="${dashMonth}" data-onchange="dash-month" aria-label="Bulan"></label>
+    ${state.me.role === "Marketing" ? `<button class="btn primary big" data-action="create">${icon("plus", 18)} Buat skrip</button>` : ""}`;
+
+  const kpi = (ic, title, value, sub) => `<div class="kpi"><span class="kpi-ico">${icon(ic, 24)}</span><div><span class="kpi-title">${title}</span><b>${value}</b><small>${sub}</small></div></div>`;
+  const kpis = `<div class="kpi-row">
+    ${kpi("doc", "Target bulanan", target, esc(n.targetSub))}
+    ${kpi(n.doneIcon, n.doneTitle, actual, esc(n.doneSub))}
+    ${kpi("upload", "Konten terunggah", n.uploaded, "Konten yang sudah dipublikasikan.")}
+    <div class="kpi"><span class="kpi-ico">${icon("chart", 24)}</span><div class="kpi-grow"><span class="kpi-title">Pencapaian</span><b>${rate}%</b>
+      <div class="kbar"><i style="width:${Math.min(100, rate)}%"></i></div><small>${n.rate.value} dari ${target} ${esc(n.rate.label)}.</small></div></div>
+  </div>`;
+
+  const scale = Math.max(1, ...TYPES.map((t) => Math.max(n.byType[t].target, n.byType[t].actual)));
+  const TICON = { Video: "edit", Carousel: "layers", Singlepost: "image" };
+  const tva = `<section class="panel tva"><div class="tva-head"><h2>Target vs Aktual Konten Bulan Ini</h2>
+      <div class="tva-legend"><span><i class="dt dt-t"></i>Target</span><span><i class="dt dt-a"></i>Aktual</span></div></div>
+    <div class="tva-grid">${TYPES.map((t) => `<div class="tva-item"><div class="tva-top">${icon(TICON[t], 18)}<b>${typeLabel(t)}</b><span>${n.byType[t].actual} / ${n.byType[t].target}</span></div>
+      <div class="tbar tbar-t"><i style="width:${(n.byType[t].target / scale) * 100}%"></i></div><div class="tbar tbar-a"><i style="width:${(n.byType[t].actual / scale) * 100}%"></i></div></div>`).join("")}</div></section>`;
+
+  const needTotal = TYPES.reduce((x, t) => x + n.alert.need[t], 0);
+  const alert = `<section class="alert-card ${needTotal ? "" : "ok"}"><div class="ac-head"><span class="ac-ico">${needTotal ? "!" : "✓"}</span>
+      <div><b>${needTotal ? `${needTotal} ${esc(n.alert.title)}` : "Semua aman"}</b><small>${esc(n.alert.sub)}</small></div></div>
+    <div class="ac-types">${TYPES.map((t) => `<div><span>${typeLabel(t)}</span><b>${n.alert.need[t]}</b></div>`).join("")}</div>${n.alert.action}</section>`;
+
+  root.innerHTML = `${kpis}<div class="dash-mid">${tva}${alert}</div>${queueSection()}`;
 }
+
+/** Antrean produksi di dashboard: filter, tab status, dan tabel. */
+function queueSection() {
+  const keys = cardKeys();
+  const rows = visibleRows();
+  const count = (key) => state.contents.filter((c) => scoped(c, { useDates: !DATELESS.includes(key) }) && c.flags[key]).length;
+  const all = state.contents.filter((c) => scoped(c)).length;
+  const tone = (k) => (k === "missed" ? "p-missed" : k.startsWith("late") ? "p-late" : k === "qc" || k === "revision" ? "p-neutral" : "p-info");
+  const pills = `<div class="pills" role="tablist">
+    <button class="pill p-all ${state.stage ? "" : "active"}" data-action="stage-all">Semua <b>${all}</b></button>
+    ${METRICS.filter((m) => keys.includes(m[0])).map(([k, label, sub]) => `<button class="pill ${tone(k)} ${state.stage === k ? "active" : ""}" data-action="stage" data-stage="${k}" title="${esc(sub)}">${label} <b>${count(k)}</b></button>`).join("")}
+  </div>`;
+  const apps = `<select data-onchange="filter" data-key="app" aria-label="Apps">${optionTags("app", filters.app, { blank: myApps().length ? "Semua apps saya" : "Semua apps", mine: true })}</select>`;
+  const types = `<select data-onchange="filter" data-key="type" aria-label="Jenis konten"><option value="">Semua jenis</option>${TYPES.map((t) => `<option value="${t}" ${filters.type === t ? "selected" : ""}>${typeLabel(t)}</option>`).join("")}</select>`;
+  return `<section class="worksheet queue">
+    <div class="q-head"><div class="q-title"><h2>Antrean produksi</h2><span class="q-count">${rows.length} konten</span><span class="q-hint">Klik dropdown pada setiap kolom untuk memperbarui data.</span></div>
+      <div class="q-tools">
+        <label class="q-search">${icon("search", 16)}<input type="search" placeholder="Cari judul atau isi skrip…" value="${esc(filters.search)}" data-onchange="filter" data-key="search" aria-label="Cari konten"></label>
+        ${apps}${types}
+        <span class="q-range">${icon("calendar", 16)}<input type="date" value="${filters.from}" data-onchange="filter" data-key="from" aria-label="Tanggal upload mulai"><span>–</span><input type="date" value="${filters.to}" data-onchange="filter" data-key="to" aria-label="Tanggal upload sampai"></span>
+        ${filters.app || filters.type || filters.from || filters.to || filters.search || state.stage ? '<button class="btn mini" data-action="filter-reset">Reset</button>' : ""}
+      </div></div>
+    ${pills}
+    ${tableHtml(rows)}
+    <div class="q-legend">
+      <span><i class="ld ld-todo"></i><b>Perlu tindakan</b><small>Perlu segera ditindaklanjuti</small></span>
+      <span><i class="ld ld-done"></i><b>Selesai</b><small>Sudah sesuai target</small></span>
+      <span><i class="ld ld-late"></i><b>Terlambat</b><small>${state.me.role === "Marketing" ? "Skrip belum ready lewat H-3" : "Edit belum selesai lewat H-1"}</small></span>
+      <span><i class="ld ld-missed"></i><b>Terlewat</b><small>Tanggal upload lewat, belum tayang</small></span></div>
+  </section>`;
+}
+const $id = (id) => document.getElementById(id);
 
 let typeTab = "";
 export async function renderWorksheet(root) {
@@ -247,6 +339,10 @@ function describe(field, value) {
 }
 
 delegate(document.body, "change", {
+  "dash-month": (el) => {
+    dashMonth = el.value || state.today.slice(0, 7);
+    changed();
+  },
   filter: (el) => {
     filters[el.dataset.key] = el.value;
     if (el.dataset.key === "type") typeTab = el.value;
@@ -288,6 +384,10 @@ delegate(document.body, "change", {
 });
 
 delegate(document.body, "click", {
+  "stage-all": () => {
+    state.stage = "";
+    changed();
+  },
   stage: (el) => {
     state.stage = state.stage === el.dataset.stage ? "" : el.dataset.stage;
     changed();
