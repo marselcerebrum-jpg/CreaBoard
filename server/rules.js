@@ -12,6 +12,9 @@ export const SEMANTICS = {
 // Tenggat KPI: skrip Ready paling lambat H-3 upload, hasil creative Done paling lambat H-1 upload.
 export const DEADLINE_DAYS = { Marketing: 3, Creative: 1 };
 export const MAX_ROWS = { Video: 12, Carousel: 10, Singlepost: 2 };
+// Jenis skrip. Trend & Urgent dibuat mendekati tanggal upload, jadi tenggatnya H-0 (hari upload).
+export const PRIORITIES = ["Reguler", "Trend", "Urgent"];
+export const deadlineDays = (role, priority) => (priority === "Trend" || priority === "Urgent" ? 0 : DEADLINE_DAYS[role]);
 
 export class HttpError extends Error {
   constructor(status, message, details) {
@@ -72,7 +75,7 @@ export function canSee(user, c, opts) {
 // Semua dropdown di tabel boleh diubah siapa pun yang dapat melihat konten (keputusan tim:
 // alur lebih dinamis). Urutan proses tetap dijaga applyWorkflow. Field non-dropdown tetap per peran.
 const DROPDOWN_FIELDS = ["app", "script_status", "talent_name", "talent_status", "creative_user_id", "creative_status", "qc_status"];
-const MARKETING_FIELDS = [...DROPDOWN_FIELDS, "type", "created_date", "upload_date", "sheet", "notes"];
+const MARKETING_FIELDS = [...DROPDOWN_FIELDS, "type", "created_date", "upload_date", "sheet", "notes", "priority"];
 // Staff Creative hanya mengubah dropdown (+ link hasil, syarat wajib status Creative "Done").
 const CREATIVE_FIELDS = [...DROPDOWN_FIELDS, "link"];
 const TALENT_FIELDS = [...DROPDOWN_FIELDS, "notes"];
@@ -228,10 +231,18 @@ export function applyWorkflow(prev, next, opts, now) {
     fail(422, "Take talent hanya bisa Done setelah skrip ready.");
   }
 
+  if (!PRIORITIES.includes(next.priority ?? "Reguler")) fail(422, "Jenis skrip tidak valid");
+  next.priority = next.priority ?? "Reguler";
+
   // Creative
   const link = (next.link ?? "").trim();
   if (link && !isHttpUrl(link)) fail(422, "Link hasil harus diawali http:// atau https://");
   next.link = link;
+  // QC diisi saat link hasil sudah ada → hasil creative dianggap selesai (tidak perlu dua langkah).
+  if (is.qc !== "" && is.qc !== was.qc && is.creative !== "Done" && link) {
+    next.creative_status = opts.firstWith("creative", "Done");
+    is.creative = "Done";
+  }
   if (is.creative === "Done") {
     const missing = [];
     if (is.script !== "Ready") missing.push("Skrip belum ready");
@@ -248,7 +259,7 @@ export function applyWorkflow(prev, next, opts, now) {
   }
 
   // QC
-  if (is.qc !== "" && is.creative !== "Done") fail(422, "QC hanya bisa diisi setelah hasil creative Done.");
+  if (is.qc !== "" && is.creative !== "Done") fail(422, "QC baru bisa diisi setelah Creative mengisi Link hasil.");
   if (is.qc === "Revisi" && !String(next.notes ?? "").trim()) fail(422, "Tulis catatan revisi di kolom Catatan sebelum memilih Revisi.");
 
   // Timestamp otomatis: diisi saat masuk status selesai, dihapus bila status mundur.
@@ -307,11 +318,11 @@ export async function performance(db, opts, users, month, today, viewer) {
     const targets = kpis.filter((k) => k.user_id === u.id);
     const items = rows.map((c) => {
       const done = c[doneAt] && stampDay(c[doneAt]) <= today ? stampDay(c[doneAt]) : null;
-      const deadline = addDays(c.upload_date, -days);
+      const deadline = addDays(c.upload_date, -deadlineDays(u.role, c.priority));
       const status = done
         ? done <= deadline ? "Tepat waktu" : "Selesai terlambat"
         : today > deadline ? "Terlambat" : today === deadline ? "Jatuh tempo hari ini" : "Dalam tenggat";
-      return { id: c.id, title: c.title, type: c.type, upload_date: c.upload_date, deadline, done, status };
+      return { id: c.id, type_no: c.type_no, title: c.title, type: c.type, priority: c.priority, upload_date: c.upload_date, deadline, done, status };
     });
     const doneItems = items.filter((i) => i.done);
     const onTime = doneItems.filter((i) => i.done <= i.deadline).length;

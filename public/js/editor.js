@@ -1,8 +1,8 @@
 // Pemilih jenis konten, editor skrip (layout worksheet), detail, dan konfirmasi tayang.
 import {
-  $, api, closeModal, delegate, errorText, esc, fmtDate, fmtStamp, leads, myApps, openModal, optionTags, optLabel, reloadContents,
-  sem, state, toast, typeLabel, usersByRole, userName,
+  $, api, closeModal, contentNo, delegate, errorText, esc, fmtDate, fmtStamp, leads, myApps, openModal, optionTags, optLabel, reloadContents, richText, sem, state, toast, typeLabel, userName, usersByRole,
 } from "./core.js";
+import { openFootageModal } from "./footage.js";
 import { updateContent } from "./worksheet.js";
 
 const MAX_ROWS = { Video: 12, Carousel: 10, Singlepost: 2 };
@@ -29,13 +29,13 @@ function blankSheet(type) {
 
 // ───────────── markup sheet ─────────────
 function cell(value, path, { read, cls = "", label } = {}) {
-  if (read) return `<div class="read">${esc(value) || '<span class="unfilled">—</span>'}</div>`;
+  if (read) return `<div class="read">${richText(value) || '<span class="unfilled">—</span>'}</div>`;
   return `<textarea class="${cls}" data-path="${path}" aria-label="${esc(label ?? path)}" placeholder="Tulis di sini…">${esc(value ?? "")}</textarea>`;
 }
 
 export function sheetMarkup(sh, { read = false, id } = {}) {
   const rows = sh.rows ?? [];
-  const head = `SKRIP ${id ? `#${id}` : typeLabel(sh.type).toUpperCase()}`;
+  const head = `SKRIP ${id ? esc(id) : typeLabel(sh.type).toUpperCase()}`;
   if (sh.type === "Video") {
     const total = 4 + rows.length;
     return `<div class="sheet"><table><colgroup><col style="width:7%"><col style="width:23%"><col style="width:16%"><col style="width:17%"><col style="width:13%"><col style="width:12%"><col style="width:12%"></colgroup>
@@ -88,6 +88,40 @@ export function openContentPicker() {
     </div></div><div class="foot"><button class="btn" data-action="close-modal">Batal</button></div>`);
 }
 
+// ───────────── draf otomatis (bertahan saat halaman di-refresh) ─────────────
+const draftKey = () => `creaboard:draft:${state.me.id}:${draft.id ?? `new-${draft.type}`}`;
+function storeDraft() {
+  if (!draft || !$("editorForm")) return;
+  captureSheet();
+  const fields = Object.fromEntries([...document.querySelectorAll("#editorForm .top-fields [id]")].map((el) => [el.id, el.value]));
+  try {
+    localStorage.setItem(draftKey(), JSON.stringify({ at: Date.now(), type: draft.type, sheet: draft.sheet, fields }));
+  } catch {
+    // penyimpanan browser penuh/nonaktif: draf hanya hilang bila halaman ditutup
+  }
+}
+function loadDraft() {
+  try {
+    return JSON.parse(localStorage.getItem(draftKey()) ?? "null");
+  } catch {
+    return null;
+  }
+}
+function clearDraft() {
+  try {
+    localStorage.removeItem(draftKey());
+  } catch {
+    // abaikan
+  }
+}
+let dirty = false;
+window.addEventListener("beforeunload", (e) => {
+  if (dirty && $("editorForm")) {
+    storeDraft();
+    e.preventDefault();
+  }
+});
+
 function openEditor(content, type) {
   const c = content;
   draft = {
@@ -97,8 +131,17 @@ function openEditor(content, type) {
     revision: c?.revision,
   };
   if (!draft.sheet.rows?.length) draft.sheet = blankSheet(draft.type);
+  dirty = false;
+  const saved = loadDraft();
   renderEditor(c);
+  if (saved && saved.type === draft.type && (!c || saved.at > Date.parse(c.updated_at))) {
+    $("draftBanner").innerHTML = `Ada draf yang belum disimpan (${new Date(saved.at).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}).
+      <button type="button" class="btn mini primary" data-action="draft-restore">Pulihkan</button> <button type="button" class="btn mini" data-action="draft-discard">Buang</button>`;
+    $("draftBanner").classList.remove("hidden");
+    pendingDraft = { saved, c };
+  }
 }
+let pendingDraft = null;
 
 function renderEditor(c) {
   const t = draft.type;
@@ -107,21 +150,24 @@ function renderEditor(c) {
   const creatives = usersByRole("Creative");
   const ready = c?.readyErrors ?? null;
   openModal(
-    `<form id="editorForm"><div class="modalhead"><div><div class="eyebrow">${c ? `${esc(optLabel(c.app))} / ${typeLabel(t)} / SKRIP #${c.id}` : "CONTENT PLANNING"}</div>
-      <h2 id="modalTitle">${c ? "Edit" : "Buat"} skrip ${typeLabel(t).toLowerCase()}${c ? ` #${c.id}` : ""}</h2></div><button type="button" class="close" aria-label="Tutup" data-action="close-modal">×</button></div>
+    `<form id="editorForm"><div class="modalhead"><div><div class="eyebrow">${c ? `${esc(optLabel(c.app))} / ${typeLabel(t)} / SKRIP ${esc(contentNo(c))}` : "CONTENT PLANNING"}</div>
+      <h2 id="modalTitle">${c ? "Edit" : "Buat"} skrip ${typeLabel(t).toLowerCase()}${c ? ` ${esc(contentNo(c))}` : ""}</h2></div><button type="button" class="close" aria-label="Tutup" data-action="close-modal">×</button></div>
     <div class="modalbody">
       <div class="top-fields">
         <div class="field"><label for="eCreated">Tanggal pengerjaan</label><input id="eCreated" type="date" required value="${c?.created_date ?? state.today}" ${dis("created_date")}></div>
         <div class="field"><label for="eApp">Apps</label><select id="eApp" ${dis("app")}>${optionTags("app", c?.app, { mine: true })}</select></div>
         <div class="field"><label for="eUpload">Tanggal upload</label><input id="eUpload" type="date" required value="${c?.upload_date ?? state.today}" ${dis("upload_date")}></div>
+        <div class="field"><label for="ePriority">Jenis skrip</label><select id="ePriority" ${c && !editable.includes("priority") ? "disabled" : ""}>${["Reguler", "Trend", "Urgent"].map((p) => `<option ${(c?.priority ?? "Reguler") === p ? "selected" : ""}>${p}</option>`).join("")}</select></div>
         <div class="field"><label for="eScript">Info skrip</label><select id="eScript" ${dis("script_status")}>${optionTags("script", c?.script_status ?? state.options.find((o) => o.key === "script" && o.semantic === "Draft" && !o.archived)?.id)}</select></div>
         <div class="field"><label for="eEditor">Editor</label><select id="eEditor" ${dis("creative_user_id")}><option value="">Belum ditentukan</option>${creatives.map((u) => `<option value="${u.id}" ${c?.creative_user_id === u.id ? "selected" : ""}>${esc(u.name)}</option>`).join("")}</select></div>
         ${leads("Marketing") ? `<div class="field"><label for="eOwner">Penanggung jawab skrip</label><select id="eOwner">${usersByRole("Marketing").map((u) => `<option value="${u.id}" ${(c?.marketing_user_id ?? state.me.id) === u.id ? "selected" : ""}>${esc(u.name)}${u.id === state.me.id ? " (saya)" : ""}</option>`).join("")}</select></div>` : ""}
         ${t === "Video" ? `<div class="field"><label for="eTalent">Talent</label><select id="eTalent" ${dis("talent_name")}>${optionTags("talentName", c?.talent_name, { blank: "Belum ditentukan" })}</select></div>` : ""}
       </div>
       ${ready ? `<div class="ready-check ${ready.length ? "" : "ok"}">${ready.length ? `Syarat skrip ready yang belum terpenuhi:<ul>${ready.map((e) => `<li>${esc(e)}</li>`).join("")}</ul>` : "✓ Isi skrip lengkap — bisa ditandai Skrip ready."}</div>` : ""}
-      ${t === "Singlepost" ? "" : `<div class="toolbar"><button type="button" class="btn mini" data-action="add-stage">＋ ${t === "Video" ? "Tahapan" : "Slide"}</button><button type="button" class="btn mini" data-action="remove-stage">− Terakhir</button></div>`}
-      ${sheetMarkup(draft.sheet, { id: c?.id })}
+      <div id="draftBanner" class="note draft-banner hidden"></div>
+      <div class="toolbar"><div class="fmt-tools" role="toolbar" aria-label="Format teks"><button type="button" class="btn mini fmt-b" data-action="fmt" data-mark="**" title="Tebal (Ctrl+B)"><b>B</b></button><button type="button" class="btn mini fmt-i" data-action="fmt" data-mark="*" title="Miring (Ctrl+I)"><i>I</i></button></div>
+        ${t === "Singlepost" ? "" : `<button type="button" class="btn mini" data-action="add-stage">＋ ${t === "Video" ? "Tahapan" : "Slide"}</button><button type="button" class="btn mini" data-action="remove-stage">− Terakhir</button>`}</div>
+      ${sheetMarkup(draft.sheet, { id: c ? contentNo(c) : null })}
       <p id="editorError" class="form-error hidden" role="alert" style="margin-top:14px"></p>
     </div>
     <div class="foot"><button type="button" class="btn" data-action="close-modal">Batal</button><button class="btn primary" type="submit">Simpan konten</button></div></form>`,
@@ -140,6 +186,7 @@ async function saveEditor(c) {
     app: $("eApp").value,
     upload_date: $("eUpload").value,
     script_status: $("eScript").value,
+    priority: $("ePriority").value,
     creative_user_id: $("eEditor").value ? Number($("eEditor").value) : null,
     ...(draft.type === "Video" ? { talent_name: $("eTalent").value || null } : {}),
     ...($("eOwner") ? { marketing_user_id: Number($("eOwner").value) } : {}),
@@ -155,6 +202,8 @@ async function saveEditor(c) {
       await api("POST", "/api/contents", { type: draft.type, sheet: draft.sheet, ...fields });
       await reloadContents();
     }
+    clearDraft();
+    dirty = false;
     closeModal();
     toast("Skrip tersimpan. Dashboard sudah diperbarui.");
     window.dispatchEvent(new Event("cs:changed"));
@@ -208,21 +257,76 @@ export async function openDetail(id) {
         <button class="btn primary" style="margin-top:12px" data-action="publish" data-id="${c.id}" data-revision="${c.revision}">Simpan konfirmasi</button></div>`
     : "";
   openModal(
-    `<div class="modalhead"><div><div class="eyebrow">${esc(optLabel(c.app))} / ${typeLabel(c.type)} / SKRIP #${c.id}</div><h2 id="modalTitle">${esc(c.title)}</h2></div><button class="close" aria-label="Tutup" data-action="close-modal">×</button></div>
+    `<div class="modalhead"><div><div class="eyebrow">${esc(optLabel(c.app))} / ${typeLabel(c.type)} / SKRIP ${esc(contentNo(c))}${c.priority && c.priority !== "Reguler" ? ` · ${esc(c.priority.toUpperCase())}` : ""}</div><h2 id="modalTitle">${esc(c.title)}</h2></div><button class="close" aria-label="Tutup" data-action="close-modal">×</button></div>
     <div class="modalbody"><div class="inline-meta">${chips.map((x) => `<span>${esc(x)}</span>`).join("")}</div>
-      ${published}${sheetMarkup(c.sheet, { read: true, id: c.id })}
+      ${published}${sheetMarkup(c.sheet, { read: true, id: contentNo(c) })}
       <div class="note">Catatan: ${esc(c.notes) || "Belum ada catatan produksi."}</div>${publishForm}
       <details class="panel" style="margin-top:14px"><summary class="small" style="cursor:pointer">Riwayat perubahan (${c.events.length})</summary><ul class="events">
         ${c.events.map((e) => `<li><b>${esc(e.user_name ?? "—")}</b> · ${esc(FIELD_LABEL[e.field] ?? e.field)}${e.field === "sheet" || e.field === "created" ? "" : `: ${esc(eventValue(e.field, e.from_value))} → ${esc(eventValue(e.field, e.to_value))}`}<div class="small">${esc(fmtStamp(e.at))}</div></li>`).join("")}
       </ul></details></div>
     <div class="foot"><div class="left">${canArchive ? `<button class="btn danger" data-action="archive" data-id="${c.id}">Arsipkan</button>` : ""}${leads("Marketing") && c.published_date ? `<button class="btn" data-action="unpublish" data-id="${c.id}">Batalkan status tayang</button>` : ""}</div>
-      <button class="btn" data-action="close-modal">Tutup</button>${c.editable.includes("sheet") ? `<button class="btn primary" data-action="edit-content" data-id="${c.id}">Edit skrip & info</button>` : ""}</div>`,
+      <button class="btn" data-action="close-modal">Tutup</button><button class="btn" data-action="footage-open" data-id="${c.id}">Footage</button>${c.editable.includes("sheet") ? `<button class="btn primary" data-action="edit-content" data-id="${c.id}">Edit skrip & info</button>` : ""}</div>`,
     { wide: true },
   );
   draft = { id: c.id, content: c };
 }
 
+// Format teks: bungkus seleksi di kotak skrip dengan **tebal** atau *miring*.
+let lastField = null;
+document.addEventListener("focusin", (e) => {
+  if (e.target.matches?.("#editorForm textarea[data-path]")) lastField = e.target;
+});
+function applyMark(field, mark) {
+  if (!field) return;
+  const { selectionStart: a, selectionEnd: b, value } = field;
+  const picked = value.slice(a, b) || "teks";
+  field.value = value.slice(0, a) + mark + picked + mark + value.slice(b);
+  field.focus();
+  field.setSelectionRange(a + mark.length, a + mark.length + picked.length);
+  field.dispatchEvent(new Event("input", { bubbles: true }));
+}
+document.addEventListener("keydown", (e) => {
+  if (!(e.ctrlKey || e.metaKey) || !e.target.matches?.("#editorForm textarea[data-path]")) return;
+  const k = e.key.toLowerCase();
+  if (k === "b" || k === "i") {
+    e.preventDefault();
+    applyMark(e.target, k === "b" ? "**" : "*");
+  }
+});
+let draftTimer;
+document.addEventListener("input", (e) => {
+  if (!e.target.closest?.("#editorForm")) return;
+  dirty = true;
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(storeDraft, 600);
+});
+document.addEventListener("change", (e) => {
+  if (e.target.closest?.("#editorForm .top-fields")) {
+    dirty = true;
+    storeDraft();
+  }
+});
+
 delegate(document.body, "click", {
+  fmt: (el) => applyMark(lastField, el.dataset.mark),
+  "draft-restore": () => {
+    if (!pendingDraft) return;
+    const { saved, c } = pendingDraft;
+    pendingDraft = null;
+    draft.sheet = saved.sheet;
+    renderEditor(c);
+    for (const [id, v] of Object.entries(saved.fields ?? {})) {
+      const el = document.getElementById(id);
+      if (el && !el.disabled) el.value = v;
+    }
+    dirty = true;
+    toast("Draf dipulihkan");
+  },
+  "draft-discard": () => {
+    pendingDraft = null;
+    clearDraft();
+    $("draftBanner").classList.add("hidden");
+  },
   "new-type": (el) => openEditor(null, el.dataset.type),
   "edit-content": () => openEditor(draft.content, draft.content.type),
   "add-stage": () => {

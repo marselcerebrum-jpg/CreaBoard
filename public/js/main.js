@@ -2,6 +2,7 @@ import { $, api, closeModal, delegate, errorText, esc, icon, isLeader, myApps, r
 import { renderCalendar } from "./calendar.js";
 import { openContentPicker, openDetail } from "./editor.js";
 import { openSettings } from "./settings.js";
+import { renderFootage } from "./footage.js";
 import { renderTeam } from "./team.js";
 import { renderDashboard, renderWorksheet } from "./worksheet.js";
 
@@ -9,14 +10,15 @@ const PAGES = {
   dashboard: { label: "Dashboard", icon: "dashboard", render: renderDashboard },
   create: { label: "Create konten", icon: "create", render: renderWorksheet },
   calendar: { label: "Konten kalender", icon: "calendar", render: renderCalendar },
+  footage: { label: "Footage", icon: "edit", render: renderFootage },
   team: { label: "Performa & Target", icon: "team", render: renderTeam },
 };
 
 function allowedPages() {
   const { role } = state.me;
-  if (isLeader()) return ["dashboard", "create", "calendar", "team"];
-  if (role === "Talent") return ["dashboard", "calendar"];
-  return ["dashboard", "create", "calendar", "team"];
+  if (isLeader()) return ["dashboard", "create", "calendar", "footage", "team"];
+  if (role === "Talent") return ["dashboard", "calendar", "footage"];
+  return ["dashboard", "create", "calendar", "footage", "team"];
 }
 
 function pageTitle(page) {
@@ -25,6 +27,7 @@ function pageTitle(page) {
     dashboard: isLeader() ? `Dashboard Leader ${role}` : `Dashboard ${role}`,
     create: role === "Creative" ? "Produksi konten" : "Worksheet konten",
     calendar: "Konten kalender",
+    footage: "Footage",
     team: "Performa & Target",
   }[page];
 }
@@ -69,6 +72,7 @@ async function boot() {
     .map((p) => `<button data-page="${p}" data-action="nav">${icon(PAGES[p].icon)}<span>${p === "create" && role === "Creative" ? "Produksi konten" : PAGES[p].label}</span></button>`)
     .join("");
   navigate(location.hash.slice(1) || "dashboard");
+  startLiveUpdates();
 }
 
 function showLogin(message) {
@@ -110,6 +114,42 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !$("overlay").classList.contains("hidden")) closeModal();
 });
 window.addEventListener("cs:changed", () => rerender());
+
+// ───────────── pembaruan otomatis ─────────────
+// Server mengirim sinyal setiap ada perubahan; data dimuat ulang tanpa refresh halaman.
+// Saat pengguna sedang mengetik di tabel atau jendela terbuka, pembaruan ditunda.
+let pendingSync = false;
+let syncTimer;
+const busy = () => {
+  const a = document.activeElement;
+  const typing = a && a.closest("#page") && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName);
+  return typing || !$("overlay").classList.contains("hidden");
+};
+async function syncNow() {
+  if (!state.me) return;
+  if (busy()) {
+    pendingSync = true;
+    return;
+  }
+  pendingSync = false;
+  try {
+    await reloadContents();
+    await rerender();
+  } catch {
+    // koneksi putus sementara; dicoba lagi pada sinyal berikutnya
+  }
+}
+function startLiveUpdates() {
+  const source = new EventSource("/api/stream");
+  source.onmessage = () => {
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(syncNow, 400);
+  };
+  // Cadangan bila koneksi stream terputus lama: sinkron tiap 60 detik.
+  setInterval(() => document.visibilityState === "visible" && syncNow(), 60_000);
+}
+document.addEventListener("focusout", () => pendingSync && setTimeout(syncNow, 300));
+window.addEventListener("cs:modal-closed", () => pendingSync && syncNow());
 window.addEventListener("cs:navigate", (e) => navigate(e.detail));
 window.addEventListener("unhandledrejection", (e) => toast(errorText(e.reason)));
 

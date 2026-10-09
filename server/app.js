@@ -1,14 +1,17 @@
 // HTTP server Content Studio: API JSON + file statis dari /public.
 import { createServer } from "node:http";
-import { readFile, stat } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { createReadStream, createWriteStream } from "node:fs";
+import { mkdir, readFile, stat, unlink } from "node:fs/promises";
 import { extname, join, normalize, sep } from "node:path";
+import { pipeline } from "node:stream/promises";
 import {
   clearLoginFailures, createSession, destroySession, destroyUserSessions, hashPassword, loginThrottled,
   recordLoginFailure, SESSION_COOKIE, sessionUser, validatePassword, verifyPassword,
 } from "./auth.js";
 import {
   actualCounts, addDays, applyWorkflow, canSee, contentFlags, DEADLINE_DAYS, defaultSheet, editableFields, fail, HttpError,
-  isDate, isHttpUrl, isLeader, jakartaDate, leads, manages, normalizeSheet, optionIndex, performance, scriptReadyErrors, titleFromSheet, TYPES,
+  isDate, isHttpUrl, isLeader, jakartaDate, leads, manages, normalizeSheet, optionIndex, performance, PRIORITIES, scriptReadyErrors, titleFromSheet, TYPES,
 } from "./rules.js";
 
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
@@ -19,21 +22,31 @@ const SECURITY_HEADERS = {
   "Referrer-Policy": "same-origin",
   "X-Frame-Options": "DENY",
 };
+const SENT = Symbol("response-sent");
 const CONTENT_COLS = ["title", "app", "type", "created_date", "upload_date", "script_status", "talent_status", "talent_name",
   "creative_status", "qc_status", "link", "notes", "marketing_user_id", "creative_user_id", "script_ready_at",
-  "talent_done_at", "creative_done_at", "link_at", "qc_at"];
+  "talent_done_at", "creative_done_at", "link_at", "qc_at", "priority"];
 
-export function createApp({ db, publicDir, now = () => new Date(), secureCookies = false, trustProxy = false }) {
+export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024, now = () => new Date(), secureCookies = false, trustProxy = false }) {
   // Di belakang reverse proxy (nginx), IP asli dibaca dari X-Real-IP.
   const clientIp = (req) => (trustProxy && req.headers["x-real-ip"]) || req.socket.remoteAddress;
   const today = () => jakartaDate(now());
   const nowIso = () => now().toISOString();
   const routes = [];
-  const route = (method, pattern, handler, { auth = true } = {}) => {
+  const route = (method, pattern, handler, { auth = true, raw = false } = {}) => {
     const keys = [];
     const re = new RegExp(`^${pattern.replace(/:(\w+)/g, (_, k) => (keys.push(k), "([^/]+)"))}$`);
-    routes.push({ method, re, keys, handler, auth });
+    routes.push({ method, re, keys, handler, auth, raw });
   };
+
+  // ───────────── pembaruan otomatis (Server-Sent Events) ─────────────
+  const streams = new Set();
+  const broadcast = (what) => {
+    for (const res of streams) res.write(`data: ${JSON.stringify({ what, at: Date.now() })}\n\n`);
+  };
+  setInterval(() => {
+    for (const res of streams) res.write(": ping\n\n");
+  }, 25_000).unref();
 
   // ───────────── helpers (q = db atau transaksi) ─────────────
   const appsOf = async (q, userId) => (await q.query("select app from user_apps where user_id = ? order by app", [userId])).map((r) => r.app);
@@ -121,10 +134,12 @@ export function createApp({ db, publicDir, now = () => new Date(), secureCookies
   // ───────────── konten ─────────────
   route("GET", "/api/contents", async ({ user }) => {
     const opts = await optionIndex(db);
+    const counts = new Map((await db.query("select content_id, count(*)::int n from footage where content_id is not null group by content_id"))
+      .map((r) => [r.content_id, r.n]));
     return (await db.query("select * from contents where archived = 0 order by upload_date, id"))
       .map(parseContent)
       .filter((c) => canSee(user, c, opts))
-      .map((c) => present(c, user, opts));
+      .map((c) => ({ ...present(c, user, opts), footage_count: counts.get(c.id) ?? 0 }));
   });
 
   route("GET", "/api/contents/:id", async ({ user, params }) => {
@@ -156,6 +171,7 @@ export function createApp({ db, publicDir, now = () => new Date(), secureCookies
       link: "",
       notes: String(body.notes ?? "").slice(0, 5000),
       sheet,
+      priority: PRIORITIES.includes(body.priority) ? body.priority : "Reguler",
       // Leader Marketing boleh langsung menugaskan skrip ke staff Marketing; staff selalu pemiliknya sendiri.
       marketing_user_id: leads(user, "Marketing") && body.marketing_user_id ? Number(body.marketing_user_id) : user.id,
       creative_user_id: body.creative_user_id ? Number(body.creative_user_id) : null,
@@ -167,9 +183,12 @@ export function createApp({ db, publicDir, now = () => new Date(), secureCookies
     const empty = { script_status: null, talent_status: null, creative_status: null, qc_status: null, link: "", sheet: draft.sheet, type };
     applyWorkflow(empty, draft, opts, nowIso());
     const id = await db.tx(async (q) => {
+      // Nomor urut per jenis konten; kunci per jenis agar dua pembuatan bersamaan tidak dapat nomor sama.
+      await q.query("select pg_advisory_xact_lock(hashtext(?))", [`creaboard:type_no:${type}`]);
+      const { n } = await q.one("select coalesce(max(type_no), 0)::int + 1 n from contents where type = ?", [type]);
       const row = await q.one(
-        `insert into contents (${CONTENT_COLS.join(", ")}, sheet) values (${CONTENT_COLS.map(() => "?").join(", ")}, ?) returning id`,
-        [...CONTENT_COLS.map((c) => draft[c] ?? null), JSON.stringify(draft.sheet)],
+        `insert into contents (${CONTENT_COLS.join(", ")}, sheet, type_no) values (${CONTENT_COLS.map(() => "?").join(", ")}, ?, ?) returning id`,
+        [...CONTENT_COLS.map((c) => draft[c] ?? null), JSON.stringify(draft.sheet), n],
       );
       await logEvents(q, row.id, user.id, null, { created: "Dibuat" }, ["created"]);
       return row.id;
@@ -446,6 +465,130 @@ export function createApp({ db, publicDir, now = () => new Date(), secureCookies
     return { id: target.id, apps: await appsOf(db, target.id) };
   });
 
+  // ───────────── footage & folder Drive ─────────────
+  const footageScope = async (user, body) => {
+    const opts = await optionIndex(db);
+    let { app, type } = body;
+    const contentId = body.content_id ? Number(body.content_id) : null;
+    if (contentId) {
+      const c = await visibleContent(db, user, contentId, opts);
+      app = c.app;
+      type = c.type;
+    }
+    if (opts.byId.get(app)?.key !== "app" || !TYPES.includes(type)) fail(422, "Pilih Apps dan jenis konten");
+    return { app, type, contentId };
+  };
+
+  route("GET", "/api/footage", async ({ query }) => {
+    const conds = [];
+    const params = [];
+    if (query.app) conds.push("f.app = ?"), params.push(query.app);
+    if (query.type) conds.push("f.type = ?"), params.push(query.type);
+    if (query.content_id) conds.push("f.content_id = ?"), params.push(Number(query.content_id) || 0);
+    const rows = await db.query(
+      `select f.*, u.name uploaded_by_name, c.title content_title, c.type_no content_no
+       from footage f left join users u on u.id = f.uploaded_by left join contents c on c.id = f.content_id
+       ${conds.length ? `where ${conds.join(" and ")}` : ""} order by f.id desc limit 500`,
+      params,
+    );
+    return rows.map(({ file_path, ...f }) => f);
+  });
+
+  route("POST", "/api/footage", async ({ user, body }) => {
+    const { app, type, contentId } = await footageScope(user, body);
+    const url = String(body.url ?? "").trim();
+    if (!isHttpUrl(url)) fail(422, "Link footage harus diawali https://");
+    const title = String(body.title ?? "").trim().slice(0, 200) || url;
+    const row = await db.one(
+      "insert into footage (content_id, app, type, kind, title, url, uploaded_by) values (?, ?, ?, 'link', ?, ?, ?) returning id",
+      [contentId, app, type, title, url, user.id],
+    );
+    return { id: row.id };
+  });
+
+  // Unggah langsung dari komputer: body = isi file (bukan JSON), di-stream ke disk.
+  route("POST", "/api/footage/upload", async ({ user, req, query }) => {
+    if (!uploadDir) fail(503, "Penyimpanan file belum dikonfigurasi");
+    const { app, type, contentId } = await footageScope(user, query);
+    const name = String(query.name ?? "file").replace(/[\\/\x00-\x1f]/g, "_").slice(0, 200) || "file";
+    const size = Number(req.headers["content-length"] ?? 0);
+    if (!size) fail(411, "Ukuran file tidak diketahui");
+    if (size > maxUploadMb * 1024 * 1024) fail(413, `File terlalu besar (maks. ${maxUploadMb} MB)`);
+    const month = today().slice(0, 7);
+    await mkdir(join(uploadDir, month), { recursive: true });
+    const rel = join(month, `${randomUUID()}${extname(name).slice(0, 12).toLowerCase()}`);
+    const abs = join(uploadDir, rel);
+    let written = 0;
+    req.on("data", (ch) => {
+      written += ch.length;
+      if (written > size) req.destroy(new Error("ukuran melebihi header"));
+    });
+    try {
+      await pipeline(req, createWriteStream(abs, { flags: "wx" }));
+    } catch {
+      await unlink(abs).catch(() => {});
+      fail(400, "Unggahan terputus. Coba lagi.");
+    }
+    const mime = String(req.headers["x-file-type"] || "application/octet-stream").slice(0, 100);
+    const row = await db.one(
+      "insert into footage (content_id, app, type, kind, title, file_path, mime, size, uploaded_by) values (?, ?, ?, 'file', ?, ?, ?, ?, ?) returning id",
+      [contentId, app, type, name, rel, mime, written, user.id],
+    );
+    return { id: row.id };
+  }, { raw: true });
+
+  route("GET", "/api/footage/:id/file", async ({ params, res, query }) => {
+    const f = await db.one("select * from footage where id = ? and kind = 'file'", [Number(params.id) || 0]);
+    if (!f || !uploadDir) fail(404, "File tidak ditemukan");
+    const abs = normalize(join(uploadDir, f.file_path));
+    if (!abs.startsWith(normalize(uploadDir) + sep)) fail(404, "File tidak ditemukan");
+    const st = await stat(abs).catch(() => null);
+    if (!st) fail(404, "File tidak ditemukan");
+    res.writeHead(200, {
+      "Content-Type": f.mime || "application/octet-stream",
+      "Content-Length": st.size,
+      "Content-Disposition": `${query.download ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(f.title)}`,
+      "Cache-Control": "private, max-age=3600",
+      "X-Content-Type-Options": "nosniff",
+      "Content-Security-Policy": "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox",
+    });
+    await pipeline(createReadStream(abs), res);
+    return SENT;
+  });
+
+  route("DELETE", "/api/footage/:id", async ({ user, params }) => {
+    const f = await db.one("select * from footage where id = ?", [Number(params.id) || 0]);
+    if (!f) fail(404, "Footage tidak ditemukan");
+    if (!isLeader(user) && f.uploaded_by !== user.id) fail(403, "Hanya pengunggah atau Leader yang dapat menghapus footage");
+    await db.run("delete from footage where id = ?", [f.id]);
+    if (f.kind === "file" && uploadDir) await unlink(join(uploadDir, f.file_path)).catch(() => {});
+    return { ok: true };
+  });
+
+  route("GET", "/api/drive-folders", async () => db.query("select * from drive_folders"));
+
+  route("PUT", "/api/drive-folders", async ({ user, body }) => {
+    requireLeader(user);
+    const opts = await optionIndex(db);
+    if (opts.byId.get(body.app)?.key !== "app" || !TYPES.includes(body.type)) fail(422, "Pilih Apps dan jenis konten");
+    const url = String(body.url ?? "").trim();
+    if (!url) {
+      await db.run("delete from drive_folders where app = ? and type = ?", [body.app, body.type]);
+      return { ok: true };
+    }
+    if (!isHttpUrl(url)) fail(422, "Link folder harus diawali https://");
+    await db.run("insert into drive_folders (app, type, url) values (?, ?, ?) on conflict (app, type) do update set url = excluded.url", [body.app, body.type, url]);
+    return { ok: true };
+  });
+
+  route("GET", "/api/stream", async ({ req, res }) => {
+    res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-store", Connection: "keep-alive", "X-Accel-Buffering": "no" });
+    res.write("retry: 5000\n\n");
+    streams.add(res);
+    req.on("close", () => streams.delete(res));
+    return SENT;
+  });
+
   // ───────────── opsi dropdown ─────────────
   // Leader mengirim daftar lengkap satu kolom; pilihan yang hilang diarsipkan (bukan dihapus).
   route("PUT", "/api/options/:key", async ({ user, params, body }) => {
@@ -560,21 +703,28 @@ export function createApp({ db, publicDir, now = () => new Date(), secureCookies
         if (await serveStatic(req, res, "/")) return;
         return send(404, { error: "Not found" });
       }
-      // Proteksi CSRF: mutasi wajib JSON dari origin yang sama (cookie juga SameSite=Strict).
-      if (req.method !== "GET" && !String(req.headers["content-type"] ?? "").startsWith("application/json")) {
-        return send(415, { error: "Gunakan application/json" });
-      }
       const match = routes.find((r) => r.method === req.method && r.re.test(url.pathname));
       if (!match) return send(404, { error: "Endpoint tidak ditemukan" });
+      // Proteksi CSRF: mutasi wajib JSON (atau header khusus untuk unggahan file) dari origin yang sama;
+      // cookie juga SameSite=Strict.
+      if (req.method !== "GET") {
+        const okJson = String(req.headers["content-type"] ?? "").startsWith("application/json");
+        const okRaw = match.raw && req.headers["x-requested-with"] === "creaboard";
+        if (!okJson && !okRaw) return send(415, { error: "Gunakan application/json" });
+      }
       const token = parseCookies(req.headers.cookie)[SESSION_COOKIE];
       const user = await sessionUser(db, token);
       if (user) user.apps = await appsOf(db, user.id);
       if (match.auth && !user) return send(401, { error: "Silakan login" });
       const params = Object.fromEntries(match.keys.map((k, i) => [k, decodeURIComponent(url.pathname.match(match.re)[i + 1])]));
-      const body = req.method === "GET" ? {} : await readBody(req);
+      const body = req.method === "GET" || match.raw ? {} : await readBody(req);
       const result = await match.handler({ req, res, user, token, params, body, query: Object.fromEntries(url.searchParams) });
+      if (result === SENT) return;
       send(200, result ?? { ok: true });
+      // Beritahu semua browser yang terbuka agar memuat ulang data.
+      if (req.method !== "GET" && match.auth) broadcast(url.pathname.split("/")[2]);
     } catch (e) {
+      if (res.headersSent) return res.end();
       if (e instanceof HttpError) return send(e.status, { error: e.message, details: e.details });
       console.error("[server]", e);
       send(500, { error: "Terjadi kesalahan server" });

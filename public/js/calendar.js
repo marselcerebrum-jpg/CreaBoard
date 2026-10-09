@@ -7,7 +7,11 @@ let appFilter = "";
 let data = null;
 const key = (app, type, date) => JSON.stringify([app, type, date]);
 
+let keepScroll = null; // posisi geser disimpan agar tidak loncat saat data diperbarui
+
 export async function renderCalendar(root) {
+  const prev = root.querySelector("#calScroll");
+  if (prev) keepScroll = { month, left: prev.scrollLeft, top: prev.scrollTop };
   month ||= state.today.slice(0, 7);
   data = await api("GET", `/api/calendar?month=${month}`);
   const [y, m] = month.split("-").map(Number);
@@ -59,11 +63,32 @@ export async function renderCalendar(root) {
     <div class="calendar-summary"><div class="panel"><span class="small">Rencana bulan ini</span><b>${totalPlan}</b></div><div class="panel"><span class="small">Aktual (skrip ready)</span><b>${totalActual}</b></div><div class="panel"><span class="small">Capaian rencana</span><b>${totalPlan ? `${Math.round((totalActual / totalPlan) * 100)}%` : "—"}</b></div><div class="panel self-edit"><span class="small">Edit mandiri</span><b>${selfEdit}</b></div></div>
     <section class="worksheet"><div class="tablehead"><h2>Rencana & aktual harian</h2>
       <div style="display:flex;gap:8px"><span class="legend-chip">Rencana · kiri</span><span class="legend-chip">Aktual · kanan</span><span class="legend-chip legend-self">Berwarna · edit mandiri</span></div></div>
-      <div class="calendar-scroll"><table><thead><tr><th colspan="2"></th><th colspan="${days}" class="month-name"><span>${esc(monthName)}</span></th><th rowspan="2" class="c-total">JUMLAH</th></tr>
-      <tr class="days-row"><th class="c-app">Apps</th><th class="c-type">Jenis konten</th>${dates.map((d, i) => `<th class="${weekend(d) ? "weekend" : ""} ${d === state.today ? "today" : ""}">${i + 1}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div></section>`;
+      <div class="cal-nav" role="group" aria-label="Geser tanggal">
+        <button class="btn mini" data-action="cal-scroll" data-days="-7">‹ 7 hari</button>
+        <button class="btn mini" data-action="cal-today">Hari ini</button>
+        <button class="btn mini" data-action="cal-scroll" data-days="7">7 hari ›</button></div>
+      <div class="calendar-scroll" id="calScroll"><table><thead><tr><th colspan="2"></th><th colspan="${days}" class="month-name"><span>${esc(monthName)}</span></th><th rowspan="2" class="c-total">JUMLAH</th></tr>
+      <tr class="days-row"><th class="c-app">Apps</th><th class="c-type">Jenis konten</th>${dates.map((d, i) => `<th class="${weekend(d) ? "weekend" : ""} ${d === state.today ? "today" : ""}" data-day="${d}">${i + 1}<small>${new Intl.DateTimeFormat("id-ID", { weekday: "short", timeZone: "UTC" }).format(new Date(`${d}T12:00:00Z`))}</small></th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div></section>`;
+  const scroller = root.querySelector("#calScroll");
+  if (keepScroll && keepScroll.month === month) {
+    scroller.scrollLeft = keepScroll.left;
+    scroller.scrollTop = keepScroll.top;
+  } else {
+    scrollToDay(scroller, state.today);
+  }
+  keepScroll = null;
 }
 
 const changed = () => window.dispatchEvent(new Event("cs:changed"));
+
+/** Geser tabel agar kolom tanggal tertentu tampil di sebelah kolom Apps/Jenis. */
+function scrollToDay(scroller, day) {
+  const th = scroller?.querySelector(`th[data-day="${day}"]`);
+  if (!th) return;
+  const sticky = scroller.querySelector("thead .c-type");
+  const offset = sticky ? sticky.offsetLeft + sticky.offsetWidth : 0;
+  scroller.scrollLeft = Math.max(0, th.offsetLeft - offset - 8);
+}
 let pop = null;
 const closePop = () => {
   pop?.remove();
@@ -103,6 +128,18 @@ delegate(document.body, "click", {
     const [y, m] = month.split("-").map(Number);
     month = new Date(Date.UTC(y, m - 1 + Number(el.dataset.delta), 1)).toISOString().slice(0, 7);
     changed();
+  },
+  "cal-scroll": (el) => {
+    const scroller = document.getElementById("calScroll");
+    const col = scroller?.querySelector("th[data-day]");
+    if (scroller && col) scroller.scrollBy({ left: Number(el.dataset.days) * col.offsetWidth, behavior: "smooth" });
+  },
+  "cal-today": () => {
+    if (month !== state.today.slice(0, 7)) {
+      month = state.today.slice(0, 7);
+      return changed();
+    }
+    scrollToDay(document.getElementById("calScroll"), state.today);
   },
   "cal-now": () => {
     month = state.today.slice(0, 7);

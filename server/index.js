@@ -38,7 +38,7 @@ async function main() {
   }
   const port = Number(process.env.PORT ?? 3000);
   const host = process.env.HOST ?? "0.0.0.0";
-  createApp({ db, publicDir: join(root, "public"), secureCookies: process.env.SECURE_COOKIES === "1", trustProxy: process.env.TRUST_PROXY === "1" }).listen(port, host, () => {
+  createApp({ db, publicDir: join(root, "public"), uploadDir: process.env.UPLOAD_DIR ?? join(root, "data", "uploads"), maxUploadMb: Number(process.env.MAX_UPLOAD_MB ?? 1024), secureCookies: process.env.SECURE_COOKIES === "1", trustProxy: process.env.TRUST_PROXY === "1" }).listen(port, host, () => {
     console.log(`  Content Studio berjalan di http://localhost:${port}`);
   });
 }

@@ -10,10 +10,17 @@ services:
       PORT: "3000"
       SECURE_COOKIES: "1"
       TRUST_PROXY: "1"
+      UPLOAD_DIR: /app/data/uploads
+      MAX_UPLOAD_MB: "1024"
+    volumes:
+      - creaboard_uploads:/app/data/uploads
     ports:
       - "127.0.0.1:3300:3000"
     networks:
       - supabase-content
+
+volumes:
+  creaboard_uploads:
 
 networks:
   supabase-content:

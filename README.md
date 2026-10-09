@@ -30,6 +30,16 @@ Ada dua Leader: **Leader Marketing** (skrip, rencana kalender, konfirmasi tayang
 
 **Pembagian apps** (khusus tim Marketing; Setting → Akun, role & apps — bisa dipilih saat membuat akun): Leader Marketing menentukan apps yang dipegang tiap staff Marketing. Staff otomatis melihat semua konten di apps-nya, dan pilihan apps saat membuat skrip, filter, serta kalender dibatasi ke apps tersebut. Creative dan Talent tidak memakai pembagian apps. Demo: Nadia → JadiASN; Raka → JadiBUMN & JadiBeasiswa.
 
+**Fitur kerja harian:**
+- **Nomor skrip per jenis** — V1, V2… (Video), C1… (Carrousel), S1… (Singlepost), masing-masing mulai dari 1.
+- **Jenis skrip** Reguler / Trend / Urgent. Trend & Urgent bertenggat H-0, terpisah dari tenggat reguler.
+- **Format teks** di editor skrip: tombol **B** / *I* atau Ctrl+B / Ctrl+I (ditulis sebagai `**tebal**` / `*miring*`).
+- **Draf otomatis** — isi editor disimpan di browser dan bisa dipulihkan setelah refresh atau saat dibuka lagi.
+- **Langkah berikutnya** di antrean produksi menjelaskan siapa yang harus melakukan apa. Mengisi QC setelah Link hasil ada otomatis menandai Creative Done.
+- **Pembaruan otomatis** — perubahan dari akun lain langsung tampil tanpa refresh (Server-Sent Events).
+- **Pencarian** mencakup judul dan seluruh isi skrip/brief.
+- **Footage** — per konten (tombol Footage di detail/tabel) atau lewat menu Footage: unggah file dari komputer atau tambah link Google Drive, dikelompokkan dan difilter per Apps & jenis konten. Leader mengatur link folder Drive tiap Apps × jenis konten.
+
 Untuk mengosongkan data lokal: hentikan server, hapus folder `data/`, lalu jalankan lagi.
 
 ## Konfigurasi (environment variable)
@@ -43,6 +53,8 @@ Untuk mengosongkan data lokal: hentikan server, hapus folder `data/`, lalu jalan
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` / `ADMIN_NAME` | `leader` / acak / `Leader` | Akun Leader pertama (hanya saat database kosong) |
 | `SECURE_COOKIES` | – | Isi `1` bila diakses lewat HTTPS |
 | `TRUST_PROXY` | – | Isi `1` bila di belakang nginx (IP asli dari `X-Real-IP` untuk pembatas login) |
+| `UPLOAD_DIR` | `data/uploads` | Folder file footage yang diunggah (di Docker: volume `creaboard_uploads`) |
+| `MAX_UPLOAD_MB` | `1024` | Batas ukuran satu file footage |
 
 ## Deploy di VPS (Docker + Supabase self-hosted)
 
@@ -55,22 +67,22 @@ Untuk mengosongkan data lokal: hentikan server, hapus folder `data/`, lalu jalan
    ```
 2. `git clone` repo ke `/opt/creaboard`, salin `.env.example` → `.env` dan isi `DATABASE_URL` serta `ADMIN_PASSWORD`.
 3. `docker compose up -d --build` — container `creaboard` bergabung ke jaringan `supabase-content_default` dan hanya membuka `127.0.0.1:3300`.
-4. Nginx meneruskan `creaboard.marseltech.cloud` → `127.0.0.1:3300`, HTTPS dari Let's Encrypt (certbot).
+4. Nginx meneruskan `creaboard.marseltech.cloud` → `127.0.0.1:3300`, HTTPS dari Let's Encrypt (certbot). Tambahkan `client_max_body_size` ≥ `MAX_UPLOAD_MB` untuk `/api/footage/upload` (dengan `proxy_request_buffering off`) dan `proxy_buffering off` untuk `/api/stream` (pembaruan otomatis).
 
 Update: `cd /opt/creaboard && git pull && docker compose up -d --build`.
 
 ## Operasional
 
-- **Backup:** data ada di schema `creaboard` pada Postgres `supabase-content` — ikut backup database Supabase, atau `pg_dump -n creaboard`.
+- **Backup:** data ada di schema `creaboard` pada Postgres `supabase-content` — ikut backup database Supabase, atau `pg_dump -n creaboard`. File footage ada di volume Docker `creaboard_uploads`.
 - **Log:** `docker logs creaboard`.
 
 ## Struktur
 
 ```
 server/   index.js (entry) · app.js (API) · rules.js (aturan alur & izin) · auth.js · db.js
-public/   index.html · styles.css · js/ (core, main, worksheet, editor, calendar, team, settings)
+public/   index.html · styles.css · js/ (core, main, worksheet, editor, calendar, team, settings, footage)
 scripts/  seed-demo.js
-tests/    api.test.js   →  npm test
+tests/    api.test.js · features.test.js   →  npm test
 ```
 
 Semua aturan bisnis (izin per peran, urutan status, definisi kartu dashboard, KPI) ada di `server/rules.js`. UI hanya menampilkan hasil dari server, sehingga aturan tidak bisa dilewati dari browser.

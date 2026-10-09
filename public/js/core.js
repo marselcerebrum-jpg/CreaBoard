@@ -145,6 +145,7 @@ export function closeModal() {
   $("overlay").classList.add("hidden");
   $("modal").innerHTML = "";
   state.activeId = null;
+  window.dispatchEvent(new Event("cs:modal-closed"));
 }
 
 /** Event delegation: elemen dengan data-action="nama" memanggil handlers[nama](el, event). */
@@ -160,3 +161,25 @@ export function delegate(root, type, handlers) {
 export async function reloadContents() {
   state.contents = await api("GET", "/api/contents");
 }
+
+// ───────────── nomor & format teks ─────────────
+const TYPE_PREFIX = { Video: "V", Carousel: "C", Singlepost: "S" };
+/** Nomor skrip per jenis konten: V1, C1, S1 … */
+export const contentNo = (c) => `${TYPE_PREFIX[c.type] ?? ""}${c.type_no ?? c.id}`;
+
+/** Teks skrip dengan **tebal** dan *miring* → HTML aman (di-escape lebih dulu). */
+export function richText(s) {
+  return esc(s)
+    .replace(/\*\*(.+?)\*\*/gs, "<strong>$1</strong>")
+    .replace(/(^|[^*])\*(?!\s)(.+?)\*(?!\*)/gs, "$1<em>$2</em>");
+}
+
+/** Semua teks skrip (judul, brief, caption, catatan) untuk pencarian menyeluruh. */
+export function searchText(c) {
+  const s = c.sheet ?? {};
+  const parts = [c.title, c.notes, ...(s.meta ?? []), ...(s.metaFootage ?? []), ...(s.metaEditing ?? []), s.caption1, s.caption2, s.notes];
+  for (const r of s.rows ?? []) parts.push(r.label, r.text, r.footage, r.direction);
+  return parts.filter(Boolean).join(" ").replace(/\*/g, "").toLowerCase();
+}
+
+export const fmtSize = (n) => (n == null ? "" : n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : n < 1024 ** 3 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${(n / 1024 ** 3).toFixed(2)} GB`);

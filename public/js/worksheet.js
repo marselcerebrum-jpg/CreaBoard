@@ -1,6 +1,6 @@
 // Dashboard dan worksheet produksi (tabel dengan dropdown per sel; kartu di ponsel).
 import {
-  api, ApiError, delegate, errorText, esc, fmtDate, fmtStamp, icon, isLeader, leads, myApps, optionTags, optLabel, reloadContents, sem,
+  api, ApiError, contentNo, delegate, errorText, esc, fmtDate, fmtStamp, icon, isLeader, leads, myApps, optionTags, optLabel, reloadContents, searchText, sem,
   state, toast, TYPES, typeLabel, usersByRole, userName,
 } from "./core.js";
 
@@ -47,7 +47,7 @@ function visibleRows() {
   return state.contents
     .filter((c) => scoped(c, { useDates: !DATELESS.includes(state.stage) }))
     .filter((c) => !state.stage || c.flags[state.stage])
-    .filter((c) => !q || `${c.id} ${c.title} ${optLabel(c.app)}`.toLowerCase().includes(q))
+    .filter((c) => !q || `${contentNo(c)} ${optLabel(c.app)} ${searchText(c)}`.toLowerCase().includes(q))
     .sort((a, b) => a.upload_date.localeCompare(b.upload_date) || a.id - b.id);
 }
 
@@ -56,8 +56,8 @@ function filterBar({ withEditor, withType = true }) {
     <div class="field"><label for="fApp">Apps</label><select id="fApp" data-onchange="filter" data-key="app">${optionTags("app", filters.app, { blank: myApps().length ? "Semua apps saya" : "Semua apps", mine: true })}</select></div>
     ${withType ? `<div class="field"><label for="fType">Jenis konten</label><select id="fType" data-onchange="filter" data-key="type"><option value="">Semua</option>${TYPES.map((t) => `<option value="${t}" ${filters.type === t ? "selected" : ""}>${typeLabel(t)}</option>`).join("")}</select></div>` : ""}
     ${withEditor ? `<div class="field"><label for="fEditor">Editor</label><select id="fEditor" data-onchange="filter" data-key="editor"><option value="">Semua editor</option>${usersByRole("Creative").map((u) => `<option value="${u.id}" ${filters.editor === String(u.id) ? "selected" : ""}>${esc(u.name)}</option>`).join("")}</select></div>` : ""}
-    <div class="field"><label for="fFrom">Upload mulai</label><input id="fFrom" type="date" value="${filters.from}" data-onchange="filter" data-key="from"></div>
-    <div class="field"><label for="fTo">Upload sampai</label><input id="fTo" type="date" value="${filters.to}" data-onchange="filter" data-key="to"></div>
+    <div class="field"><label for="fFrom">Tanggal upload mulai</label><input id="fFrom" type="date" value="${filters.from}" data-onchange="filter" data-key="from"></div>
+    <div class="field"><label for="fTo">Tanggal upload sampai</label><input id="fTo" type="date" value="${filters.to}" data-onchange="filter" data-key="to"></div>
     <div class="filter-actions"><button class="btn" data-action="filter-today">Hari ini</button><button class="btn" data-action="filter-reset">Reset</button></div>
   </div>`;
 }
@@ -95,7 +95,33 @@ function editorSelect(c) {
 }
 const none = '<span class="badge b-muted">Tidak perlu</span>';
 
+/** Instruksi tahap berikutnya: siapa mengerjakan apa. */
+function nextStep(c) {
+  const f = c.flags;
+  if (f.published) return ["Selesai", "Sudah tayang", "done"];
+  if (sem(c.script_status) !== "Ready") return ["Marketing", "Lengkapi skrip, lalu ubah Info skrip ke Ready", "todo"];
+  if (c.type === "Video" && sem(c.talent_status) === "Belum") return ["Talent", "Lakukan take, lalu ubah Status take ke Done", "todo"];
+  if (sem(c.qc_status) === "Revisi") return ["Creative", "Perbaiki sesuai catatan QC, lalu tempel link hasil baru", "warn"];
+  if (sem(c.creative_status) !== "Done") {
+    if (!c.creative_user_id) return ["Leader Creative", "Tentukan editor di kolom Editor", "todo"];
+    return ["Creative", "Edit konten, lalu tempel Link hasil", "todo"];
+  }
+  if (sem(c.qc_status) === "") return ["Marketing", "Cek hasil, lalu ubah QC ke Done atau Revisi", "todo"];
+  return ["Marketing", "Upload ke channel, lalu klik nomor → Konfirmasi tayang", "todo"];
+}
+
 const CELLS = {
+  next: {
+    head: "Langkah berikutnya",
+    html: (c) => {
+      const [who, what, tone] = nextStep(c);
+      return `<div class="next-step ns-${tone}"><b>${esc(who)}</b><span>${esc(what)}</span></div>`;
+    },
+  },
+  footage: {
+    head: "Footage",
+    html: (c) => `<button class="footage-btn" data-action="footage-open" data-id="${c.id}" aria-label="Footage #${esc(contentNo(c))}">${c.footage_count ? `${c.footage_count} file/link` : "＋ Tambah"}</button>`,
+  },
   script: { head: "Info skrip", html: (c) => select(c, "script_status", "script") + stamp(c.script_ready_at) },
   talentName: { head: "Talent", html: (c) => (c.type === "Video" ? select(c, "talent_name", "talentName", "Belum ditentukan") : none) },
   take: { head: "Status take", html: (c) => (c.type === "Video" ? select(c, "talent_status", "talent") + stamp(c.talent_done_at) : none) },
@@ -125,23 +151,24 @@ const CELLS = {
 };
 // Urutan kolom mengikuti pekerjaan tiap peran: kolom tugas sendiri di depan.
 const ORDER = {
-  default: ["script", "talentName", "take", "editor", "creative", "link", "qc", "upload", "notes"],
-  Creative: ["creative", "link", "qc", "upload", "editor", "script", "talentName", "take", "notes"],
-  Talent: ["take", "talentName", "upload", "script", "editor", "creative", "link", "qc", "notes"],
+  default: ["next", "script", "talentName", "take", "editor", "creative", "link", "qc", "upload", "footage", "notes"],
+  Creative: ["next", "creative", "link", "qc", "upload", "footage", "editor", "script", "talentName", "take", "notes"],
+  Talent: ["next", "take", "talentName", "footage", "upload", "script", "editor", "creative", "link", "qc", "notes"],
 };
 const columns = () => ORDER[state.me.role] ?? ORDER.default;
 
 function titleCell(c) {
-  return `<div class="t-title">${esc(c.title)}</div><div class="t-meta">${esc(optLabel(c.app))} · ${typeLabel(c.type)} · dibuat ${fmtDate(c.created_date)}</div>`;
+  const prio = c.priority && c.priority !== "Reguler" ? ` <span class="badge b-prio">${esc(c.priority)}</span>` : "";
+  return `<div class="t-title">${esc(c.title)}${prio}</div><div class="t-meta">${esc(optLabel(c.app))} · ${typeLabel(c.type)} · dibuat ${fmtDate(c.created_date)}</div>`;
 }
 
 function tableHtml(rows) {
   const cols = columns();
   const body = rows.length
-    ? rows.map((c) => `<tr><td class="sticky-a"><button class="number" data-action="detail" data-id="${c.id}" aria-label="Buka skrip ${c.id}">${c.id}</button></td><td class="sticky-b">${titleCell(c)}</td>${cols.map((k) => `<td>${CELLS[k].html(c)}</td>`).join("")}</tr>`).join("")
+    ? rows.map((c) => `<tr><td class="sticky-a"><button class="number" data-action="detail" data-id="${c.id}" aria-label="Buka skrip ${esc(contentNo(c))}">${esc(contentNo(c))}</button></td><td class="sticky-b">${titleCell(c)}</td>${cols.map((k) => `<td>${CELLS[k].html(c)}</td>`).join("")}</tr>`).join("")
     : `<tr><td colspan="${cols.length + 2}" class="empty">Tidak ada konten yang cocok. Ubah filter atau buat konten baru.</td></tr>`;
   const cards = rows.length
-    ? rows.map((c) => `<article class="ws-card"><header><button class="number" data-action="detail" data-id="${c.id}">${c.id}</button><div>${titleCell(c)}</div></header>
+    ? rows.map((c) => `<article class="ws-card"><header><button class="number" data-action="detail" data-id="${c.id}">${esc(contentNo(c))}</button><div>${titleCell(c)}</div></header>
         <dl>${cols.map((k) => `<div><dt>${CELLS[k].head}</dt><dd>${CELLS[k].html(c)}</dd></div>`).join("")}</dl></article>`).join("")
     : '<p class="empty">Tidak ada konten yang cocok.</p>';
   return `<div class="tablewrap ws-table"><table><thead><tr><th class="sticky-a">No.</th><th class="sticky-b">Konten</th>${cols.map((k) => `<th>${CELLS[k].head}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div>
@@ -151,7 +178,7 @@ function tableHtml(rows) {
 function worksheetSection(title, rows, subtitle) {
   return `<section class="worksheet">
     <div class="tablehead"><div><h2>${esc(title)}</h2><span class="small">${esc(subtitle)}</span></div>
-      <input class="search" type="search" placeholder="Cari nomor atau kata kunci…" value="${esc(filters.search)}" data-onchange="filter" data-key="search" aria-label="Cari konten"></div>
+      <input class="search" type="search" placeholder="Cari judul atau isi skrip…" value="${esc(filters.search)}" data-onchange="filter" data-key="search" aria-label="Cari konten"></div>
     ${tableHtml(rows)}
     <div class="legend"><span class="badge b-attn">Kuning</span><span class="small">langkah berikutnya</span><span class="badge b-done">Hijau</span><span class="small">selesai</span><span class="badge b-danger">Merah</span><span class="small">revisi / terlewat</span></div>
   </section>`;
@@ -233,6 +260,11 @@ export async function updateContent(id, changes) {
   }
 }
 
+const noOf = (id) => {
+  const c = state.contents.find((x) => x.id === id);
+  return c ? contentNo(c) : `#${id}`;
+};
+
 function describe(field, value) {
   if (field === "creative_user_id") return userName(value) || "Belum ditentukan";
   if (field === "link" || field === "notes") return "";
@@ -264,17 +296,17 @@ delegate(document.body, "change", {
         run: async () => {
           try {
             await updateContent(id, { [field]: before });
-            toast(`#${id} · ${FIELD_NAME[field]} dikembalikan`);
+            toast(`${noOf(id)} · ${FIELD_NAME[field]} dikembalikan`);
           } catch (e) {
             toast(errorText(e), { error: true });
           }
           changed();
         },
       };
-      toast(`#${id} · ${FIELD_NAME[field]}${label ? ` → ${label}` : " tersimpan"}`, undoable ? { action: undo } : {});
+      toast(`${noOf(id)} · ${FIELD_NAME[field]}${label ? ` → ${label}` : " tersimpan"}`, undoable ? { action: undo } : {});
     } catch (e) {
       cellErrors.set(key, errorText(e).replace(/^[^:]+: /, ""));
-      toast(`#${id} · ${errorText(e)}`, { error: true });
+      toast(`${noOf(id)} · ${errorText(e)}`, { error: true });
     }
     changed();
   },

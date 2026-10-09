@@ -1,5 +1,5 @@
 // Performa & Target per staff (dihitung server).
-import { api, delegate, esc, fmtDate, isLeader, state, TYPES, typeLabel } from "./core.js";
+import { api, contentNo, delegate, esc, fmtDate, isLeader, state, TYPES, typeLabel } from "./core.js";
 
 let role = "";
 let month = "";
@@ -31,7 +31,7 @@ export async function renderTeam(root) {
         + `<div class="team-card"><label>Telat</label><strong style="color:${p.late ? "#B42318" : "#344E41"}">${p.late}</strong></div>`;
       return `<article class="person"><div class="person-head"><div class="person-id"><div class="avatar">${esc(initials)}</div><b>${esc(p.user.name)}</b></div></div><div class="team-cards">${cards}</div>
         <details><summary>Rincian konten & ketepatan waktu</summary><div style="overflow:auto"><table><thead><tr><th>Konten</th><th>Jenis</th><th>Upload</th><th>Batas selesai</th><th>Selesai</th><th>Status</th></tr></thead>
-        <tbody>${p.items.map((i) => `<tr><td><button class="number" data-action="detail" data-id="${i.id}">#${i.id}</button> ${esc(i.title)}</td><td>${typeLabel(i.type)}</td><td>${fmtDate(i.upload_date)}</td><td>${fmtDate(i.deadline)}</td><td>${i.done ? fmtDate(i.done) : "Belum selesai"}</td><td>${esc(i.status)}</td></tr>`).join("") || '<tr><td colspan="6" class="small">Belum ada konten.</td></tr>'}</tbody></table></div></details></article>`;
+        <tbody>${p.items.map((i) => `<tr><td><button class="number" data-action="detail" data-id="${i.id}">${esc(contentNo(i))}</button> ${esc(i.title)}${i.priority && i.priority !== "Reguler" ? ` <span class="badge b-prio">${esc(i.priority)}</span>` : ""}</td><td>${typeLabel(i.type)}</td><td>${fmtDate(i.upload_date)}</td><td>${fmtDate(i.deadline)}</td><td>${i.done ? fmtDate(i.done) : "Belum selesai"}</td><td>${esc(i.status)}</td></tr>`).join("") || '<tr><td colspan="6" class="small">Belum ada konten.</td></tr>'}</tbody></table></div></details></article>`;
     }).join("") : '<div class="panel" style="margin-top:18px">Belum ada anggota untuk tim ini.</div>'}`;
 }
 
