@@ -233,3 +233,28 @@ test("Telat & Terlewat: Marketing H-3 skrip, Creative H-1 edit, Trend tidak pern
   const past = await make("upload kemarin", "2026-10-09");
   assert.deepEqual([past.missed, past.lateScript, past.lateEdit], [true, false, false]);
 });
+
+test("hapus skrip: permanen (riwayat & file footage ikut terhapus), hanya Leader Marketing / Marketing pemilik yang belum diproduksi", async () => {
+  const lm = await login("leader");
+  const mk = await login("nadia");
+  const cr = await login("dimas");
+  let c = (await mk.call("POST", "/api/contents", { type: "Video", app: app1(), creative_user_id: cr.id, sheet: sheetFor("Video", "Akan dihapus") })).data;
+  assert.equal(c.canDelete, true);
+  const bytes = new TextEncoder().encode("isi");
+  const up = await mk.call("POST", `/api/footage/upload?content_id=${c.id}&name=a.mp4`, bytes, { "Content-Type": "application/octet-stream", "X-Requested-With": "creaboard" });
+  // Creative tidak bisa menghapus.
+  assert.equal((await cr.call("GET", `/api/contents/${c.id}`)).data.canDelete, false);
+  assert.equal((await cr.call("DELETE", `/api/contents/${c.id}`, {})).status, 403);
+  // Pemilik bisa menghapus selama belum diproduksi.
+  assert.equal((await mk.call("DELETE", `/api/contents/${c.id}`, {})).status, 200);
+  assert.equal((await mk.call("GET", `/api/contents/${c.id}`)).status, 404);
+  assert.equal(await db.one("select id from contents where id = ?", [c.id]), null);
+  assert.equal(await db.one("select id from events where content_id = ?", [c.id]), null);
+  assert.equal((await mk.call("GET", `/api/footage/${up.data.id}/file`)).status, 404);
+  // Sudah selesai diedit: staff tidak bisa, Leader Marketing bisa.
+  c = (await mk.call("POST", "/api/contents", { type: "Carousel", app: app1(), creative_user_id: cr.id, sheet: sheetFor("Carousel", "Sudah diedit") })).data;
+  c = (await mk.call("PATCH", `/api/contents/${c.id}`, { revision: c.revision, changes: { script_status: opt("script", "Ready") } })).data;
+  c = (await cr.call("PATCH", `/api/contents/${c.id}`, { revision: c.revision, changes: { link: "https://drive.google.com/x", creative_status: opt("creative", "Done") } })).data;
+  assert.equal((await mk.call("DELETE", `/api/contents/${c.id}`, {})).status, 403);
+  assert.equal((await lm.call("DELETE", `/api/contents/${c.id}`, {})).status, 200);
+});

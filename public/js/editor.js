@@ -1,6 +1,6 @@
 // Pemilih jenis konten, editor skrip (layout worksheet), detail, dan konfirmasi tayang.
 import {
-  $, api, closeModal, contentNo, delegate, errorText, esc, fmtDate, fmtStamp, leads, myApps, openModal, optionTags, optLabel, reloadContents, richText, sem, state, toast, typeLabel, userName, usersByRole,
+  $, api, closeModal, contentNo, delegate, errorText, esc, fmtDate, fmtStamp, icon, leads, myApps, openModal, optionTags, optLabel, reloadContents, richText, sem, state, toast, typeLabel, userName, usersByRole,
 } from "./core.js";
 import { fillFootageBox, flushPendingFootage, footageBoxHtml, resetPendingFootage, uploadFile } from "./footage.js";
 import { updateContent } from "./worksheet.js";
@@ -264,7 +264,6 @@ export async function openDetail(id) {
   }
   state.activeId = id;
   const canPublish = c.flags.upload && (leads("Marketing") || (state.me.role === "Marketing" && c.marketing_user_id === state.me.id));
-  const canArchive = leads("Marketing") || (state.me.role === "Marketing" && c.marketing_user_id === state.me.id && sem(c.creative_status) !== "Done" && !c.published_date);
   const chips = [
     `Upload · ${fmtDate(c.upload_date)}`,
     `Talent · ${c.type === "Video" ? optLabel(c.talent_name) || "Belum ditentukan" : "Tidak perlu"}`,
@@ -291,12 +290,28 @@ export async function openDetail(id) {
       <details class="panel" style="margin-top:14px"><summary class="small" style="cursor:pointer">Riwayat perubahan (${c.events.length})</summary><ul class="events">
         ${c.events.map((e) => `<li><b>${esc(e.user_name ?? "—")}</b> · ${esc(FIELD_LABEL[e.field] ?? e.field)}${e.field === "sheet" || e.field === "created" ? "" : `: ${esc(eventValue(e.field, e.from_value))} → ${esc(eventValue(e.field, e.to_value))}`}<div class="small">${esc(fmtStamp(e.at))}</div></li>`).join("")}
       </ul></details></div>
-    <div class="foot"><div class="left">${canArchive ? `<button class="btn danger" data-action="archive" data-id="${c.id}">Arsipkan</button>` : ""}${leads("Marketing") && c.published_date ? `<button class="btn" data-action="unpublish" data-id="${c.id}">Batalkan status tayang</button>` : ""}</div>
+    <div class="foot"><div class="left">${c.canDelete ? `<button class="btn danger" data-action="delete-content" data-id="${c.id}">${icon("trash", 16)} Hapus skrip</button>` : ""}${leads("Marketing") && c.published_date ? `<button class="btn" data-action="unpublish" data-id="${c.id}">Batalkan status tayang</button>` : ""}</div>
       <button class="btn" data-action="close-modal">Tutup</button>${c.editable.includes("sheet") ? `<button class="btn primary" data-action="edit-content" data-id="${c.id}">Edit skrip & info</button>` : ""}</div>`,
     { wide: true },
   );
   draft = { id: c.id, content: c };
   if (c.type !== "Video") fillFootageBox().catch((e) => toast(errorText(e), { error: true }));
+}
+
+/** Hapus skrip permanen (setelah konfirmasi); dipakai dari detail dan kolom Aksi tabel. */
+export async function deleteContent(id) {
+  const c = state.contents.find((x) => x.id === id) ?? draft?.content;
+  const name = c ? `${typeLabel(c.type)} ${contentNo(c)} · "${c.title}"` : "skrip ini";
+  if (!confirm(`Hapus ${name}?\n\nSkrip, riwayat perubahan, dan file footage yang diunggah akan terhapus permanen dan tidak bisa dikembalikan.`)) return;
+  try {
+    await api("DELETE", `/api/contents/${id}`, {});
+    await reloadContents();
+    if (!$("overlay").classList.contains("hidden")) closeModal();
+    toast("Skrip dihapus");
+    window.dispatchEvent(new Event("cs:changed"));
+  } catch (e) {
+    toast(errorText(e), { error: true });
+  }
 }
 
 // Format teks: bungkus seleksi di kotak skrip dengan **tebal** atau *miring*.
@@ -445,16 +460,5 @@ delegate(document.body, "click", {
     openDetail(Number(el.dataset.id));
     window.dispatchEvent(new Event("cs:changed"));
   },
-  archive: async (el) => {
-    if (!confirm("Arsipkan konten ini? Konten arsip tidak muncul di dashboard.")) return;
-    try {
-      await api("DELETE", `/api/contents/${el.dataset.id}`, {});
-      await reloadContents();
-      closeModal();
-      toast("Konten diarsipkan");
-      window.dispatchEvent(new Event("cs:changed"));
-    } catch (e) {
-      toast(errorText(e));
-    }
-  },
+  "delete-content": (el) => deleteContent(Number(el.dataset.id)),
 });

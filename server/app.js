@@ -11,7 +11,7 @@ import {
 } from "./auth.js";
 import {
   actualCounts, addDays, applyWorkflow, canSee, contentFlags, DEADLINE_DAYS, defaultSheet, editableFields, fail, HttpError,
-  isDate, isHttpUrl, isLeader, jakartaDate, leads, manages, mergeFootage, normalizeSheet, optionIndex, performance, PRIORITIES, scriptReadyErrors, titleFromSheet, TYPES,
+  canDeleteContent, isDate, isHttpUrl, isLeader, jakartaDate, leads, manages, mergeFootage, normalizeSheet, optionIndex, performance, PRIORITIES, scriptReadyErrors, titleFromSheet, TYPES,
 } from "./rules.js";
 
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
@@ -73,6 +73,7 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
   const present = (c, user, opts) => ({
     ...c,
     flags: contentFlags(c, opts, today()),
+    canDelete: canDeleteContent(user, c, opts),
     editable: editableFields(user, c, opts),
     readyErrors: scriptReadyErrors(c),
   });
@@ -263,12 +264,14 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
   route("DELETE", "/api/contents/:id", async ({ user, params }) => {
     const opts = await optionIndex(db);
     const c = await visibleContent(db, user, params.id, opts);
-    const started = opts.sem(c.creative_status) === "Done" || c.published_date;
-    if (!leads(user, "Marketing") && !(user.role === "Marketing" && c.marketing_user_id === user.id && !started)) {
-      fail(403, "Hanya Leader Marketing yang dapat mengarsipkan konten yang sudah diproduksi");
-    }
-    await db.run("update contents set archived = 1, revision = revision + 1 where id = ?", [c.id]);
-    await logEvents(db, c.id, user.id, c, { archived: 1 }, ["archived"]);
+    if (!canDeleteContent(user, c, opts)) fail(403, "Hanya Leader Marketing, atau Marketing pemilik skrip yang belum diproduksi, yang dapat menghapus skrip");
+    // Hapus permanen: riwayat ikut terhapus (cascade), file footage yang diunggah ikut dibuang.
+    const files = await db.query("select file_path from footage where content_id = ? and kind = 'file'", [c.id]);
+    await db.tx(async (q) => {
+      await q.run("delete from footage where content_id = ?", [c.id]);
+      await q.run("delete from contents where id = ?", [c.id]);
+    });
+    if (uploadDir) for (const f of files) await unlink(join(uploadDir, f.file_path)).catch(() => {});
     return { ok: true };
   });
 

@@ -136,7 +136,8 @@ const CELLS = {
     html: (c) => `<div class="aksi">${/^https?:\/\//i.test(c.link)
       ? `<a class="icon-act" href="${esc(c.link)}" target="_blank" rel="noopener noreferrer" title="Buka link hasil" aria-label="Buka link hasil ${esc(c.title)}">${icon("link", 16)}</a>`
       : `<span class="icon-act off" title="Belum ada link hasil">${icon("link", 16)}</span>`}
-      <button class="icon-act" data-action="detail" data-id="${c.id}" title="Detail skrip" aria-label="Detail ${esc(c.title)}">${icon("more", 16)}</button></div>`,
+      <button class="icon-act" data-action="detail" data-id="${c.id}" title="Detail skrip" aria-label="Detail ${esc(c.title)}">${icon("more", 16)}</button>
+      ${c.canDelete ? `<button class="icon-act danger" data-action="delete-content" data-id="${c.id}" title="Hapus skrip" aria-label="Hapus ${esc(c.title)}">${icon("trash", 16)}</button>` : ""}</div>`,
   },
   notes: {
     head: "Catatan",

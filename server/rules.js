@@ -90,6 +90,13 @@ export const leads = (user, role) => isLeader(user) && user.role === role;
 /** Pembagian apps hanya di tim Marketing dan diatur Leader Marketing. */
 export const manages = (leader, target) => leads(leader, "Marketing") && target.position === "Staff" && target.role === "Marketing";
 
+/** Hapus skrip: Leader Marketing semua; staff Marketing hanya skrip miliknya yang belum selesai diedit/tayang. */
+export function canDeleteContent(user, c, opts) {
+  if (leads(user, "Marketing")) return true;
+  const started = opts.sem(c.creative_status) === "Done" || Boolean(c.published_date);
+  return user.role === "Marketing" && c.marketing_user_id === user.id && !started;
+}
+
 export function editableFields(user, c, opts) {
   if (!canSee(user, c, opts)) return [];
   if (leads(user, "Marketing")) return [...MARKETING_FIELDS, "marketing_user_id"];
