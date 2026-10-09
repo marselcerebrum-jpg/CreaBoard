@@ -179,20 +179,38 @@ export async function reloadContents() {
 /** Nomor skrip per jenis konten: tiap jenis (Video, Carrousel, Singlepost) mulai dari 1. */
 export const contentNo = (c) => String(c.type_no ?? c.id);
 
-/** Teks skrip dengan **tebal**, *miring*, dan link yang bisa diklik → HTML aman (di-escape lebih dulu). */
+/** Nama domain singkat untuk ikon link (mis. "drive.google.com"). */
+export const hostOf = (u) => {
+  try {
+    return new URL(u.replace(/&amp;/g, "&")).hostname.replace(/^www\./, "");
+  } catch {
+    return "link";
+  }
+};
+/** URL unduhan untuk file yang diunggah ke server (paksa unduh, bukan buka). */
+export const downloadUrl = (u) => (/\/api\/footage\/\d+\/file/.test(u) ? `${u}${u.includes("?") ? "&" : "?"}download=1` : null);
+/** Link ditampilkan sebagai ikon + domain (rapi), URL lengkap di tooltip. `u` sudah di-escape. */
+const iconLink = (u) => `<a href="${u}" target="_blank" rel="noopener noreferrer" class="link-ico" title="${u}">${icon("link", 13)}<span>${esc(hostOf(u))}</span></a>`;
+
+/**
+ * Teks skrip → HTML aman: **tebal**, *miring*, link sebagai ikon, dan baris file unggahan
+ * "[file] nama | url" sebagai tautan file + tombol unduh.
+ */
 export function richText(s) {
-  const link = (u, label) => `<a href="${u}" target="_blank" rel="noopener noreferrer" class="text-link">${label}</a>`;
   // Tebal/miring hanya untuk teks biasa, tidak menyentuh URL (agar href tidak rusak).
   const mark = (t) => t.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/(^|[^*\w])\*(?![\s*])(.+?)\*(?![*\w])/g, "$1<em>$2</em>");
   return esc(s)
     .split("\n")
     .map((line) => {
       const file = line.match(/^\[file\] (.+?) \| (https?:\/\/\S+)$/);
-      if (file) return `<span class="file-line">📎 ${link(file[2], file[1])}</span>`;
-      // URL disisihkan dulu (tanda * tidak termasuk URL), format diterapkan, lalu URL dikembalikan sebagai link.
+      if (file) {
+        const dl = downloadUrl(file[2]);
+        return `<span class="file-line">${icon("doc", 14)}<a href="${file[2]}" target="_blank" rel="noopener noreferrer">${file[1]}</a>${dl ? `<a class="file-dl" href="${dl}" title="Unduh ${file[1]}" aria-label="Unduh ${file[1]}">${icon("download", 14)}</a>` : ""}</span>`;
+      }
+      // URL disisihkan dulu (tanda * tidak termasuk URL), format diterapkan, lalu URL dikembalikan sebagai ikon.
       const urls = [];
-      const masked = line.replace(/https?:\/\/[^\s<*]+/g, (u) => ` ${urls.push(u) - 1} `);
-      return mark(masked).replace(/ (\d+) /g, (_, i) => link(urls[i], urls[i].length > 48 ? `${urls[i].slice(0, 45)}…` : urls[i]));
+      const masked = line.replace(/https?:\/\/[^\s<*]+/g, (u) => `\u0000${urls.push(u) - 1}\u0000`);
+      return mark(masked).replace(/\u0000(\d+)\u0000/g, (_, k) => iconLink(urls[k]));
     })
     .join("\n");
 }
@@ -200,7 +218,7 @@ export function richText(s) {
 /** Semua teks skrip (judul, brief, caption, catatan) untuk pencarian menyeluruh. */
 export function searchText(c) {
   const s = c.sheet ?? {};
-  const parts = [c.title, c.notes, ...(s.meta ?? []), ...(s.metaFootage ?? []), ...(s.metaEditing ?? []), s.caption1, s.caption2, s.notes];
+  const parts = [c.title, c.notes, s.keyword, ...(s.meta ?? []), ...(s.metaFootage ?? []), ...(s.metaEditing ?? []), s.caption1, s.caption2, s.notes];
   for (const r of s.rows ?? []) parts.push(r.label, r.text, r.footage, r.direction);
   return parts.filter(Boolean).join(" ").replace(/\*/g, "").toLowerCase();
 }

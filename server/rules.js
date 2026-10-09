@@ -143,6 +143,7 @@ export function normalizeSheet(type, raw) {
     caption1: str(s.caption1),
     caption2: str(s.caption2),
     notes: str(s.notes),
+    keyword: str(s.keyword, 500),
   };
   if (type === "Video") {
     sheet.metaFootage = arr(s.metaFootage, 4);

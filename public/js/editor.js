@@ -1,6 +1,6 @@
 // Pemilih jenis konten, editor skrip (layout worksheet), detail, dan konfirmasi tayang.
 import {
-  $, addDays, api, closeModal, contentNo, delegate, errorText, esc, fmtDate, fmtStamp, icon, leads, myApps, openModal, optionTags, optLabel, reloadContents, richText, sem, state, toast, typeLabel, userName, usersByRole,
+  $, addDays, api, closeModal, downloadUrl, hostOf, contentNo, delegate, errorText, esc, fmtDate, fmtStamp, icon, leads, myApps, openModal, optionTags, optLabel, reloadContents, richText, sem, state, toast, typeLabel, userName, usersByRole,
 } from "./core.js";
 import { uploadFile } from "./footage.js";
 import { updateContent } from "./worksheet.js";
@@ -81,30 +81,48 @@ function setPath(path, value) {
 }
 function captureSheet() {
   document.querySelectorAll("#modal [data-path]").forEach((el) => setPath(el.dataset.path, el.value));
-  // Kolom footage editor: teks + daftar file digabung kembali ke satu field.
-  document.querySelectorAll("#modal .ft2[data-fpath]").forEach((box) => {
-    setPath(box.dataset.fpath, joinFootage(box.querySelector("textarea").value, JSON.parse(box.dataset.files || "[]")));
-  });
+  // Kolom footage: teks + link + file digabung kembali ke satu field.
+  document.querySelectorAll("#modal .ft2[data-fpath]").forEach((box) => setPath(box.dataset.fpath, footageValue(box)));
 }
 
-// ───────────── kolom footage: teks/link + file unggahan ─────────────
+// ───────────── kolom footage: teks, link (ikon), file unggahan ─────────────
 const FILE_LINE = /^\[file\] (.+?) \| (\S+)$/;
-/** Pisahkan isi kolom footage menjadi teks bebas dan daftar file unggahan. */
+const URL_LINE = /^https?:\/\/\S+$/i;
+const isWebUrl = (u) => /^https?:\/\//i.test(u);
+/** Pisahkan isi kolom footage: teks bebas, link (baris berisi URL saja), dan file unggahan. */
 export function splitFootage(value) {
   const text = [];
+  const links = [];
   const files = [];
   for (const line of String(value ?? "").split("\n")) {
-    const m = line.match(FILE_LINE);
+    const t = line.trim();
+    const m = t.match(FILE_LINE);
     if (m) files.push({ name: m[1], url: m[2] });
+    else if (URL_LINE.test(t)) links.push(t);
     else text.push(line);
   }
-  return { text: text.join("\n").trim(), files };
+  return { text: text.join("\n").trim(), links, files };
 }
-const joinFootage = (text, files) => [text.trim(), ...files.map((f) => `[file] ${f.name.replace(/\|/g, "/")} | ${f.url}`)].filter(Boolean).join("\n");
+const joinFootage = (text, links, files) =>
+  [text.trim(), ...links, ...files.map((f) => `[file] ${f.name.replace(/\|/g, "/")} | ${f.url}`)].filter(Boolean).join("\n");
+const boxList = (box, key) => JSON.parse(box.dataset[key] || "[]");
+const footageValue = (box) => joinFootage(box.querySelector("textarea").value, boxList(box, "links"), boxList(box, "files"));
+
+const linkChips = (links, { removable = true } = {}) =>
+  links.map((u, i) => `<span class="link-chip"><a href="${esc(u)}" target="_blank" rel="noopener noreferrer" title="${esc(u)}">${icon("link", 13)}<span>${esc(hostOf(u))}</span></a>${removable ? `<button type="button" data-action="ft2-unlink" data-index="${i}" aria-label="Hapus link ${esc(hostOf(u))}">×</button>` : ""}</span>`).join("");
+const IMG = /\.(png|jpe?g|gif|webp|avif)$/i;
 const fileChips = (files) =>
-  files.map((f, i) => `<div class="file-chip"><span class="fc-ico">${icon(/\.(mp4|mov|webm|mkv|avi)$/i.test(f.name) ? "edit" : "image", 15)}</span><span class="fc-name">${esc(f.name)}</span>
-    ${/^https?:\/\//i.test(f.url) ? `<a class="fc-act" href="${esc(f.url)}" target="_blank" rel="noopener noreferrer" title="Lihat" aria-label="Lihat ${esc(f.name)}">${icon("eye", 16)}</a>` : ""}
-    <button type="button" class="fc-act" data-action="ft2-remove" data-index="${i}" title="Lepas" aria-label="Lepas ${esc(f.name)}">×</button></div>`).join("");
+  files.map((f, i) => {
+    const web = isWebUrl(f.url);
+    const dl = web ? downloadUrl(f.url) : null;
+    const thumb = web && IMG.test(f.name) ? `<img src="${esc(f.url)}" alt="" loading="lazy">` : icon(/\.(mp4|mov|webm|mkv|avi)$/i.test(f.name) ? "edit" : "doc", 15);
+    return `<div class="file-chip"><span class="fc-ico">${thumb}</span><span class="fc-name" title="${esc(f.name)}">${esc(f.name)}</span>
+      ${web ? `<a class="fc-act" href="${esc(f.url)}" target="_blank" rel="noopener noreferrer" title="Lihat" aria-label="Lihat ${esc(f.name)}">${icon("eye", 16)}</a>` : ""}
+      ${dl ? `<a class="fc-act" href="${esc(dl)}" title="Unduh" aria-label="Unduh ${esc(f.name)}">${icon("download", 16)}</a>` : ""}
+      <button type="button" class="fc-act" data-action="ft2-remove" data-index="${i}" title="Lepas" aria-label="Lepas ${esc(f.name)}">×</button></div>`;
+  }).join("");
+/** Ikon untuk semua URL di sebuah teks (keterangan desain / arahan). */
+const textLinks = (value) => linkChips(String(value ?? "").match(/https?:\/\/[^\s<]+/g) ?? [], { removable: false });
 
 // ───────────── pemilih jenis & editor ─────────────
 export function openContentPicker() {
@@ -188,25 +206,38 @@ function applyFields(fields) {
   }
 }
 
-const TYPE_TABS = [["Video", "Video", "▶"], ["Carousel", "Carrousel", "▥"], ["Singlepost", "Singlepost", "▧"]];
-const TITLE_HINT = { Video: "Kata kunci / judul video", Carousel: "Tema carrousel", Singlepost: "Judul / hook" };
-// Field meta selain judul (meta[0]) masuk ke "Detail lainnya".
-const EXTRA_META = { Video: [[1, "Konsep konten · inframe / voice over"], [2, "Link contoh video"], [3, "Visual hook"]], Carousel: [], Singlepost: [[1, "Sumber"], [2, "Image / ilustrasi"]] };
-const DIRECTION_HINT = { Video: "Arahan editing (opsional)", Carousel: "Keterangan desain (opsional)", Singlepost: "Arahan (opsional)" };
+const TYPE_CARDS = [
+  ["Video", "Video", "▷", "Skrip, footage & caption"],
+  ["Carousel", "Carrousel", "▤", "Slide, ilustrasi & caption"],
+  ["Singlepost", "Singlepost", "▧", "Isi, ilustrasi & caption"],
+];
+const SCRIPT_TITLE = { Video: "Skrip & footage", Carousel: "Slide & ilustrasi", Singlepost: "Konten & ilustrasi" };
+// Field pendukung per jenis (struktur data tetap: meta[1..] dan keterangan umum).
+const INTRO = {
+  Video: [["meta.1", "Konsep konten · inframe / voice over"], ["meta.2", "Link contoh video", "link"], ["meta.3", "Visual hook"], ["notes", "Keterangan"]],
+  Carousel: [["notes", "Tema / arahan desain"]],
+  Singlepost: [["meta.1", "Sumber / referensi"], ["meta.2", "Image / ilustrasi"], ["notes", "Keterangan"]],
+};
+const DIRECTION = { Video: "Arahan editing", Carousel: "Keterangan desain", Singlepost: "Keterangan desain" };
+const getPath = (path) => path.split(".").reduce((o, k) => o?.[k], draft.sheet) ?? "";
+let capTab = "1";
 
 /** Kotak teks dengan tombol tebal/miring. */
-function richBox(path, value, { placeholder = "Tulis di sini…", rows = 4, label } = {}) {
-  return `<div class="rbox"><div class="rbox-tools" role="toolbar" aria-label="Format teks">
+function richBox(path, value, { placeholder = "Tulis di sini…", rows = 4, label, hidden = false } = {}) {
+  return `<div class="rbox ${hidden ? "hidden" : ""}" data-box="${path}"><div class="rbox-tools" role="toolbar" aria-label="Format teks">
       <button type="button" data-action="fmt" data-mark="**" data-target="${path}" title="Tebal (Ctrl+B)"><b>B</b></button>
       <button type="button" data-action="fmt" data-mark="*" data-target="${path}" title="Miring (Ctrl+I)"><i>I</i></button></div>
     <textarea data-path="${path}" rows="${rows}" placeholder="${esc(placeholder)}" aria-label="${esc(label ?? path)}">${esc(value ?? "")}</textarea></div>`;
 }
 
+/** Kolom Footage / Ilustrasi: arahan visual, link (tampil sebagai ikon), dan file unggahan. */
 function footageBox(path, value, { autosave = false } = {}) {
-  const { text, files } = splitFootage(value);
-  return `<div class="ft2" data-fpath="${path}" data-files="${esc(JSON.stringify(files))}">
-    <textarea rows="2" placeholder="Tulis arahan visual atau tempel link…" aria-label="Footage ${esc(path)}" ${autosave ? 'data-onchange="footage-save"' : ""}>${esc(text)}</textarea>
-    <div class="ft2-up"><label class="btn mini ft2-btn">${icon("link", 14)} <span>+ Upload file</span><input type="file" multiple hidden data-onchange="ft2-upload"></label><span class="small">Dari komputer</span></div>
+  const { text, links, files } = splitFootage(value);
+  return `<div class="ft2" data-fpath="${path}" data-files="${esc(JSON.stringify(files))}" data-links="${esc(JSON.stringify(links))}">
+    <textarea rows="2" placeholder="Ketik arahan visual atau catatan editor…" aria-label="Footage ${esc(path)}" ${autosave ? 'data-onchange="footage-save"' : ""}>${esc(text)}</textarea>
+    <div class="ft2-link"><input type="url" placeholder="Tempel link Drive / referensi (https://…)" aria-label="Tambah link footage" data-ft2-link><button type="button" class="btn mini" data-action="ft2-add-link">Tambah</button></div>
+    <div class="ft2-links">${linkChips(links)}</div>
+    <label class="ft2-upload"><span>＋ Upload file</span><input type="file" multiple hidden data-onchange="ft2-upload"></label>
     <div class="ft2-files">${fileChips(files)}</div></div>`;
 }
 
@@ -223,60 +254,95 @@ function renderEditor(c) {
   const ready = c?.readyErrors ?? null;
   const rows = sh.rows ?? [];
   const canRemove = (i) => t !== "Singlepost" && i > 0 && i < rows.length - 1 && rows.length > 3;
-  const studio = c ? optLabel(c.app) : "Content Studio";
+  if (t !== "Video") capTab = "1";
+  const intro = INTRO[t].map(([path, label, kind]) => `<div class="field ${INTRO[t].length === 1 ? "full" : ""}"><label>${label}</label>${kind === "link"
+    ? `<input data-path="${path}" value="${esc(getPath(path))}" placeholder="https://…" aria-label="${esc(label)}"><div class="dir-links">${textLinks(getPath(path))}</div>`
+    : `<textarea data-path="${path}" rows="2" placeholder="Tulis ${esc(label.toLowerCase())}…" aria-label="${esc(label)}">${esc(getPath(path))}</textarea>`}</div>`).join("");
+  const blocks = rows.map((r, i) => `<section class="ck-block">
+      <div class="ck-btop"><span>${esc(r.label)}</span>${canRemove(i) ? `<button type="button" class="ck-del" data-action="remove-stage" data-index="${i}" aria-label="Hapus ${esc(r.label)}">Hapus</button>` : ""}</div>
+      <div class="ck-bbody">
+        <div><label>Isi skrip</label>${richBox(`rows.${i}.text`, r.text, { placeholder: `Tulis ${r.label.toLowerCase()} di sini…`, label: `${r.label} skrip` })}
+          <label class="ck-sub">${DIRECTION[t]} <span class="small">(opsional)</span></label>
+          <textarea class="ed-dir" data-path="rows.${i}.direction" rows="2" placeholder="${DIRECTION[t]}…" aria-label="${esc(r.label)} ${DIRECTION[t].toLowerCase()}">${esc(r.direction ?? "")}</textarea>
+          <div class="dir-links">${textLinks(r.direction)}</div></div>
+        <div><label>${t === "Video" ? "Footage" : "Ilustrasi"} / keterangan</label>${footageBox(`rows.${i}.footage`, r.footage)}</div>
+      </div></section>`).join("");
   openModal(
-    `<form id="editorForm" class="editor-page">
-    <div class="ed-bar"><div class="ed-crumb"><b>${esc(studio)}</b><span>|</span>Worksheet <span>/</span> <em>${c ? `Edit skrip ${esc(typeLabel(t))} ${esc(contentNo(c))}` : "Buat konten"}</em></div>
-      <div class="ed-actions"><button type="button" class="btn ghost" data-action="close-modal">Batal</button><button class="btn primary" type="submit">Simpan konten</button></div></div>
-    <div class="ed-body">
-      <h2 id="modalTitle" class="ed-title">${c ? "Edit konten" : "Buat konten"}</h2>
-      <div class="ed-types" role="tablist" aria-label="Jenis konten">${TYPE_TABS.map(([k, label, ic]) => `<button type="button" role="tab" aria-selected="${k === t}" class="${k === t ? "active" : ""}" ${c && k !== t ? "disabled" : ""} data-action="switch-type" data-type="${k}"><span>${ic}</span>${label}</button>`).join("")}</div>
+    `<form id="editorForm" class="ck">
+    <div class="ck-page">
+      <div class="ck-crumb">${esc(c ? optLabel(c.app) : "Content Studio")} / ${c ? "Edit konten" : "Create Konten"}</div>
+      <header class="ck-head"><div><h2 id="modalTitle">${c ? "Edit Konten" : "Create Konten"}</h2><p>Satu tempat untuk menyiapkan skrip dan kebutuhan visual.</p></div>
+        <span class="ck-badge">${c ? `${esc(typeLabel(t))} ${esc(contentNo(c))}` : "Draft baru"}</span></header>
+      <div class="ck-types" role="tablist" aria-label="Jenis konten">${TYPE_CARDS.map(([k, label, sym, sub]) => `<button type="button" role="tab" aria-selected="${k === t}" class="ck-type ${k === t ? "selected" : ""}" ${c && k !== t ? "disabled" : ""} data-action="switch-type" data-type="${k}">
+        <span class="ck-sym">${sym}</span><span><strong>${label}</strong><small>${sub}</small></span></button>`).join("")}</div>
       <div id="draftBanner" class="note draft-banner hidden"></div>
-      ${ready ? `<div class="ready-check ${ready.length ? "" : "ok"}">${ready.length ? `Syarat skrip ready yang belum terpenuhi:<ul>${ready.map((e) => `<li>${esc(e)}</li>`).join("")}</ul>` : "✓ Isi skrip lengkap — bisa ditandai Skrip ready."}</div>` : ""}
-      <div class="top-fields ed-main">
-        <div class="field ed-wide"><label>Judul konten</label><input data-path="meta.0" value="${esc(sh.meta?.[0] ?? "")}" placeholder="${esc(TITLE_HINT[t])}" maxlength="200" aria-label="Judul konten"></div>
-        <div class="field"><label for="eApp">Apps</label><select id="eApp" ${dis("app")}>${optionTags("app", c?.app, { mine: true })}</select></div>
-        <div class="field"><label for="eUpload">Tanggal upload</label><input id="eUpload" type="date" required value="${c?.upload_date ?? addDays(state.today, 3)}" ${dis("upload_date")}></div>
-        <div class="field"><label for="eEditor">Editor</label><select id="eEditor" ${dis("creative_user_id")}><option value="">Belum ditentukan</option>${creatives.map((u) => `<option value="${u.id}" ${c?.creative_user_id === u.id ? "selected" : ""}>${esc(u.name)}</option>`).join("")}${keepInactive(creatives, c?.creative_user_id)}</select></div>
+      <div class="ck-layout"><div class="ck-form">
+        <section class="ck-card"><div class="ck-cardhead"><h3><span class="ck-num">01</span>Informasi konten</h3></div>
+          <div class="ck-body ck-grid top-fields">
+            <div class="field"><label for="eApp">Apps</label><select id="eApp" ${dis("app")}>${optionTags("app", c?.app, { mine: true })}</select></div>
+            <div class="field"><label for="eUpload">Tanggal upload</label><input id="eUpload" type="date" required value="${c?.upload_date ?? addDays(state.today, 3)}" ${dis("upload_date")}></div>
+            <div class="field full"><label>Info skrip / judul konten</label><input data-path="meta.0" value="${esc(sh.meta?.[0] ?? "")}" placeholder="Contoh: Syarat wajib daftar RBB 2026" maxlength="200" aria-label="Judul konten"></div>
+            <div class="field"><label for="ePriority">Jenis skrip</label><select id="ePriority" ${dis("priority")}>${["Reguler", "Trend", "Urgent"].map((p) => `<option ${(c?.priority ?? "Reguler") === p ? "selected" : ""}>${p}</option>`).join("")}</select></div>
+            <div class="field"><label>Kata kunci</label><input data-path="keyword" value="${esc(sh.keyword ?? "")}" placeholder="Contoh: syarat RBB, lowongan BUMN" aria-label="Kata kunci"></div>
+            <div class="field"><label for="eScript">Status skrip</label><select id="eScript" ${dis("script_status")}>${optionTags("script", c?.script_status ?? state.options.find((o) => o.key === "script" && o.semantic === "Draft" && !o.archived)?.id)}</select></div>
+            <div class="field"><label for="eEditor">Editor</label><select id="eEditor" ${dis("creative_user_id")}><option value="">Belum ditentukan</option>${creatives.map((u) => `<option value="${u.id}" ${c?.creative_user_id === u.id ? "selected" : ""}>${esc(u.name)}</option>`).join("")}${keepInactive(creatives, c?.creative_user_id)}</select></div>
+            ${t === "Video" ? `<div class="field"><label for="eTalent">Talent</label><select id="eTalent" ${dis("talent_name")}>${optionTags("talentName", c?.talent_name, { blank: "Belum ditentukan" })}</select></div>` : ""}
+            <div class="field"><label for="eCreated">Tanggal pengerjaan</label><input id="eCreated" type="date" required value="${c?.created_date ?? state.today}" ${dis("created_date")}></div>
+            ${leads("Marketing") ? `<div class="field"><label for="eOwner">Penanggung jawab skrip</label><select id="eOwner">${usersByRole("Marketing").map((u) => `<option value="${u.id}" ${(c?.marketing_user_id ?? state.me.id) === u.id ? "selected" : ""}>${esc(u.name)}${u.id === state.me.id ? " (saya)" : ""}</option>`).join("")}${keepInactive(usersByRole("Marketing"), c?.marketing_user_id)}</select></div>` : ""}
+          </div></section>
+        <section class="ck-card"><div class="ck-cardhead"><h3><span class="ck-num">02</span>${SCRIPT_TITLE[t]}</h3><span class="small">${rows.length} bagian</span></div>
+          <div class="ck-body"><div class="ck-grid">${intro}</div>
+            <div class="ck-blocks">${blocks}</div>
+            ${t === "Singlepost" ? "" : `<button type="button" class="ck-add" data-action="add-stage">＋ ${t === "Video" ? "Tambah tahapan" : "Tambah slide"}</button>`}
+          </div></section>
+        <section class="ck-card"><div class="ck-cardhead"><h3><span class="ck-num">03</span>Caption</h3></div>
+          <div class="ck-body">
+            ${t === "Video" ? `<div class="ck-captabs" role="tablist"><button type="button" class="btn ${capTab === "1" ? "active" : ""}" data-action="cap-tab" data-cap="1">TikTok</button><button type="button" class="btn ${capTab === "2" ? "active" : ""}" data-action="cap-tab" data-cap="2">Instagram</button></div>` : ""}
+            <label class="ck-caplabel">${t === "Video" ? `Caption ${capTab === "1" ? "TikTok" : "Instagram"}` : "Caption"}</label>
+            ${richBox("caption1", sh.caption1, { rows: 5, placeholder: "Tulis caption, ajakan, dan hashtag…", label: t === "Video" ? "Caption TikTok" : "Caption", hidden: t === "Video" && capTab !== "1" })}
+            ${t === "Video" ? richBox("caption2", sh.caption2, { rows: 5, placeholder: "Tulis caption, ajakan, dan hashtag…", label: "Caption Instagram", hidden: capTab !== "2" }) : ""}
+          </div></section>
+        <p id="editorError" class="form-error hidden" role="alert"></p>
       </div>
-      <details class="ed-more" ${c ? "open" : ""}><summary>Detail lainnya</summary>
-        <div class="top-fields ed-grid">
-          <div class="field"><label for="eScript">Info skrip</label><select id="eScript" ${dis("script_status")}>${optionTags("script", c?.script_status ?? state.options.find((o) => o.key === "script" && o.semantic === "Draft" && !o.archived)?.id)}</select></div>
-          <div class="field"><label for="ePriority">Jenis skrip</label><select id="ePriority" ${dis("priority")}>${["Reguler", "Trend", "Urgent"].map((p) => `<option ${(c?.priority ?? "Reguler") === p ? "selected" : ""}>${p}</option>`).join("")}</select></div>
-          <div class="field"><label for="eCreated">Tanggal pengerjaan</label><input id="eCreated" type="date" required value="${c?.created_date ?? state.today}" ${dis("created_date")}></div>
-          ${t === "Video" ? `<div class="field"><label for="eTalent">Talent</label><select id="eTalent" ${dis("talent_name")}>${optionTags("talentName", c?.talent_name, { blank: "Belum ditentukan" })}</select></div>` : ""}
-          ${leads("Marketing") ? `<div class="field"><label for="eOwner">Penanggung jawab skrip</label><select id="eOwner">${usersByRole("Marketing").map((u) => `<option value="${u.id}" ${(c?.marketing_user_id ?? state.me.id) === u.id ? "selected" : ""}>${esc(u.name)}${u.id === state.me.id ? " (saya)" : ""}</option>`).join("")}${keepInactive(usersByRole("Marketing"), c?.marketing_user_id)}</select></div>` : ""}
-        </div>
-        <div class="ed-meta">${EXTRA_META[t].map(([i, label]) => `<div class="field"><label>${label}</label><textarea data-path="meta.${i}" rows="2" aria-label="${esc(label)}">${esc(sh.meta?.[i] ?? "")}</textarea></div>`).join("")}
-          <div class="field"><label>Keterangan</label><textarea data-path="notes" rows="2" aria-label="Keterangan">${esc(sh.notes ?? "")}</textarea></div></div>
-      </details>
-      <div class="ed-table" role="table" aria-label="Skrip">
-        <div class="ed-row ed-head" role="row"><div>Bagian</div><div>Skrip & arahan</div><div>Footage / Ilustrasi</div></div>
-        ${rows.map((r, i) => `<div class="ed-row" role="row">
-          <div class="ed-part"><b>${esc(r.label)}</b>${canRemove(i) ? `<button type="button" class="ed-del" data-action="remove-stage" data-index="${i}" title="Hapus bagian" aria-label="Hapus ${esc(r.label)}">×</button>` : ""}</div>
-          <div>${richBox(`rows.${i}.text`, r.text, { label: `${r.label} skrip` })}
-            <textarea class="ed-dir" data-path="rows.${i}.direction" rows="1" placeholder="${DIRECTION_HINT[t]}" aria-label="${esc(r.label)} arahan">${esc(r.direction ?? "")}</textarea></div>
-          <div>${footageBox(`rows.${i}.footage`, r.footage)}</div></div>`).join("")}
-      </div>
-      ${t === "Singlepost" ? "" : `<button type="button" class="ed-add" data-action="add-stage">＋ Tambah bagian</button>`}
-      <div class="ed-captions ${t === "Video" ? "two" : ""}">
-        ${t === "Video"
-          ? `<div class="ed-cap"><label>Caption TikTok</label>${richBox("caption1", sh.caption1, { rows: 3, label: "Caption TikTok" })}</div><div class="ed-cap"><label>Caption Instagram</label>${richBox("caption2", sh.caption2, { rows: 3, label: "Caption Instagram" })}</div>`
-          : `<div class="ed-cap"><label>Caption</label>${richBox("caption1", sh.caption1, { rows: 3, label: "Caption" })}</div>`}
-      </div>
-      <p class="small ed-hint">Teks, link, dan file bisa digunakan bersamaan.</p>
-      <p id="editorError" class="form-error hidden" role="alert"></p>
-    </div></form>`,
+      <div class="ck-summary"><section class="ck-card"><div class="ck-body">
+        <h3>Ringkasan konten</h3>
+        <div class="ck-row"><span>Format</span><span>${esc(typeLabel(t))}</span></div>
+        <div class="ck-row"><span>Apps</span><span id="sumApp">—</span></div>
+        <div class="ck-row"><span>Upload</span><span id="sumUpload">—</span></div>
+        <div class="ck-row"><span>Jenis skrip</span><span id="sumPrio">—</span></div>
+        <div class="ck-row"><span>Status skrip</span><span id="sumStatus">—</span></div>
+        <div class="ck-row"><span>Bagian</span><span>${rows.length} bagian</span></div>
+        ${ready ? `<div class="ready-check ${ready.length ? "" : "ok"}">${ready.length ? `Syarat skrip ready:<ul>${ready.map((e) => `<li>${esc(e)}</li>`).join("")}</ul>` : "✓ Isi skrip lengkap — bisa ditandai Skrip ready."}</div>` : ""}
+        <div class="ck-note">Lengkapi arahan visual per bagian. Teks, link, dan file bisa digunakan bersamaan.</div>
+      </div></section></div></div>
+    </div>
+    <footer class="ck-foot"><span class="small">Draft tersimpan otomatis di browser ini</span>
+      <div class="ck-actions"><button type="button" class="btn" data-action="close-modal">Batal</button><button class="btn primary" type="submit">Simpan konten</button></div></footer>
+    </form>`,
     { full: true, keepScroll: Boolean(fieldsBefore) },
   );
   if (fieldsBefore) {
     applyFields(fieldsBefore);
     $("modal").scrollTop = scrollBefore;
   }
+  updateSummary();
   $("editorForm").addEventListener("submit", (e) => {
     e.preventDefault();
     saveEditor(c);
   });
+}
+
+/** Panel ringkasan mengikuti isian form. */
+function updateSummary() {
+  const text = (id) => {
+    const el = $(id);
+    return el?.tagName === "SELECT" ? el.selectedOptions[0]?.textContent ?? "—" : el?.value || "—";
+  };
+  if (!$("sumApp")) return;
+  $("sumApp").textContent = text("eApp");
+  $("sumUpload").textContent = $("eUpload").value ? fmtDate($("eUpload").value) : "Belum diatur";
+  $("sumPrio").textContent = text("ePriority");
+  $("sumStatus").textContent = text("eScript");
 }
 
 /** Label baris tengah dinomori ulang setelah ditambah/dihapus. */
@@ -441,6 +507,47 @@ document.addEventListener("change", (e) => {
   }
 });
 
+// ───────────── link footage → ikon ─────────────
+function setBoxLinks(box, links) {
+  box.dataset.links = JSON.stringify(links);
+  box.querySelector(".ft2-links").innerHTML = linkChips(links);
+  box.querySelector("textarea").dispatchEvent(new Event("input", { bubbles: true }));
+  if (!$("editorForm")) saveDetailFootage();
+}
+function addFootageLink(box) {
+  const input = box.querySelector("[data-ft2-link]");
+  const urls = input.value.match(/https?:\/\/[^\s<]+/g);
+  if (!urls) return input.value.trim() && toast("Link harus diawali https://", { error: true });
+  input.value = "";
+  setBoxLinks(box, [...new Set([...boxList(box, "links"), ...urls])]);
+}
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" || !e.target.matches?.("[data-ft2-link]")) return;
+  e.preventDefault(); // jangan ikut menyimpan form
+  addFootageLink(e.target.closest(".ft2"));
+});
+// Link yang ditempel di catatan footage dipindah menjadi ikon (sebelum autosave di detail berjalan).
+document.addEventListener("change", (e) => {
+  if (e.target.matches?.("[data-ft2-link]")) return addFootageLink(e.target.closest(".ft2"));
+  if (!e.target.matches?.(".ft2 > textarea")) return;
+  const urls = e.target.value.match(/https?:\/\/[^\s<]+/g);
+  if (!urls) return;
+  const box = e.target.closest(".ft2");
+  e.target.value = e.target.value.replace(/https?:\/\/[^\s<]+/g, "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  box.dataset.links = JSON.stringify([...new Set([...boxList(box, "links"), ...urls])]);
+  box.querySelector(".ft2-links").innerHTML = linkChips(boxList(box, "links"));
+}, true);
+// Ikon link di bawah keterangan desain / arahan dan ringkasan diperbarui saat mengetik.
+document.addEventListener("input", (e) => {
+  if (e.target.matches?.("#editorForm .ed-dir, #editorForm .ck-grid input[data-path]")) {
+    const holder = e.target.parentElement.querySelector(".dir-links");
+    if (holder) holder.innerHTML = textLinks(e.target.value);
+  }
+});
+document.addEventListener("change", (e) => {
+  if (e.target.closest?.("#editorForm")) updateSummary();
+});
+
 // Unggah dari kolom Footage / Ilustrasi: file tampil sebagai daftar di kolom itu.
 let uploading = 0;
 delegate(document.body, "change", {
@@ -458,7 +565,7 @@ delegate(document.body, "change", {
     if (submit) submit.disabled = true;
     try {
       for (const file of files) {
-        const res = await uploadFile(file, params, (pct) => (label.textContent = `${pct}%`));
+        const res = await uploadFile(file, params, (pct) => label && (label.textContent = `Mengunggah ${file.name.slice(0, 24)} · ${pct}%`));
         if (!draft.id) uploadedIds.push(res.id);
         const list = JSON.parse(box.dataset.files || "[]");
         list.push({ name: file.name, url: `${location.origin}${res.url}` });
@@ -471,7 +578,7 @@ delegate(document.body, "change", {
     } catch (e) {
       toast(e.message, { error: true });
     } finally {
-      label.textContent = "+ Upload file";
+      if (label) label.textContent = "＋ Upload file";
       if (--uploading === 0 && submit) submit.disabled = false;
     }
   },
@@ -483,7 +590,7 @@ async function saveDetailFootage() {
   if (!c) return;
   const val = (path) => {
     const box = document.querySelector(`#modal .ft2[data-fpath="${path}"]`);
-    if (box) return joinFootage(box.querySelector("textarea").value, JSON.parse(box.dataset.files || "[]"));
+    if (box) return footageValue(box);
     return document.querySelector(`#modal textarea[data-path="${path}"]`)?.value ?? "";
   };
   const footage = {
@@ -512,6 +619,20 @@ delegate(document.body, "click", {
     draft.sheet = { ...blankSheet(type), caption1, notes };
     draft.sheet.meta[0] = meta[0];
     renderEditor(null);
+  },
+  "ft2-add-link": (el) => addFootageLink(el.closest(".ft2")),
+  "ft2-unlink": (el) => {
+    const box = el.closest(".ft2");
+    const links = boxList(box, "links");
+    links.splice(Number(el.dataset.index), 1);
+    setBoxLinks(box, links);
+  },
+  "cap-tab": (el) => {
+    capTab = el.dataset.cap;
+    document.querySelectorAll('#editorForm [data-action="cap-tab"]').forEach((b) => b.classList.toggle("active", b === el));
+    document.querySelector('#editorForm [data-box="caption1"]').classList.toggle("hidden", capTab !== "1");
+    document.querySelector('#editorForm [data-box="caption2"]').classList.toggle("hidden", capTab !== "2");
+    document.querySelector("#editorForm .ck-caplabel").textContent = `Caption ${capTab === "1" ? "TikTok" : "Instagram"}`;
   },
   "ft2-remove": (el) => {
     const box = el.closest(".ft2");
