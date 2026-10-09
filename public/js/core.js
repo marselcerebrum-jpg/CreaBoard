@@ -116,6 +116,7 @@ const ICONS = {
   layers: '<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>',
   image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 17-5-5-9 8"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   chart: '<path d="M6 20V12M12 20V5M18 20v-9"/>',
   trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13M9 7V4h6v3"/>',
   late: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
@@ -142,10 +143,12 @@ export function toast(text, { action, error = false } = {}) {
   toastTimer = setTimeout(() => el.classList.add("hidden"), action || error ? 7000 : 3500);
 }
 
-export function openModal(html, { wide = false } = {}) {
+export function openModal(html, { wide = false, full = false } = {}) {
   const modal = $("modal");
   modal.innerHTML = html;
   modal.classList.toggle("video-modal", wide);
+  modal.classList.toggle("full", full);
+  $("overlay").classList.toggle("full", full);
   $("overlay").classList.remove("hidden");
   modal.scrollTop = 0;
   modal.querySelector("[autofocus]")?.focus();
@@ -177,8 +180,15 @@ export const contentNo = (c) => String(c.type_no ?? c.id);
 
 /** Teks skrip dengan **tebal**, *miring*, dan link yang bisa diklik → HTML aman (di-escape lebih dulu). */
 export function richText(s) {
+  const link = (u, label) => `<a href="${u}" target="_blank" rel="noopener noreferrer" class="text-link">${label}</a>`;
   return esc(s)
-    .replace(/https?:\/\/[^\s<]+/g, (u) => `<a href="${u}" target="_blank" rel="noopener noreferrer" class="text-link">${u.length > 48 ? `${u.slice(0, 45)}…` : u}</a>`)
+    .split("\n")
+    .map((line) => {
+      const file = line.match(/^\[file\] (.+?) \| (https?:\/\/\S+)$/);
+      if (file) return `<span class="file-line">📎 ${link(file[2], file[1])}</span>`;
+      return line.replace(/https?:\/\/[^\s<]+/g, (u) => link(u, u.length > 48 ? `${u.slice(0, 45)}…` : u));
+    })
+    .join("\n")
     .replace(/\*\*(.+?)\*\*/gs, "<strong>$1</strong>")
     .replace(/(^|[^*])\*(?!\s)(.+?)\*(?!\*)/gs, "$1<em>$2</em>");
 }

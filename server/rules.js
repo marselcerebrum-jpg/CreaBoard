@@ -76,7 +76,7 @@ export function canSee(user, c, opts) {
 
 // Semua dropdown di tabel boleh diubah siapa pun yang dapat melihat konten (keputusan tim:
 // alur lebih dinamis). Urutan proses tetap dijaga applyWorkflow. Field non-dropdown tetap per peran.
-// "footage" = kolom FOOTAGE skrip Video (link footage): boleh diubah/ditambah semua peran.
+// "footage" = kolom Footage / Ilustrasi skrip (link & file): boleh diubah/ditambah semua peran.
 const DROPDOWN_FIELDS = ["app", "script_status", "talent_name", "talent_status", "creative_user_id", "creative_status", "qc_status", "footage"];
 const MARKETING_FIELDS = [...DROPDOWN_FIELDS, "type", "created_date", "upload_date", "sheet", "notes", "priority"];
 // Staff Creative hanya mengubah dropdown (+ link hasil, syarat wajib status Creative "Done").
@@ -108,11 +108,11 @@ export function editableFields(user, c, opts) {
 }
 
 // ───────────── skrip (sheet) ─────────────
-/** Ganti hanya kolom FOOTAGE skrip Video: { metaFootage: [4 teks], rows: [teks per baris] }. */
+/** Ganti hanya kolom FOOTAGE: { metaFootage: [4 teks] (Video), rows: [teks per baris] }. */
 export function mergeFootage(sheet, footage) {
-  if (sheet?.type !== "Video" || !footage || typeof footage !== "object") return sheet;
+  if (!sheet || !footage || typeof footage !== "object") return sheet;
   const next = structuredClone(sheet);
-  if (Array.isArray(footage.metaFootage)) next.metaFootage = next.metaFootage.map((v, i) => (typeof footage.metaFootage[i] === "string" ? footage.metaFootage[i].slice(0, 20000) : v));
+  if (sheet.type === "Video" && Array.isArray(footage.metaFootage)) next.metaFootage = next.metaFootage.map((v, i) => (typeof footage.metaFootage[i] === "string" ? footage.metaFootage[i].slice(0, 20000) : v));
   if (Array.isArray(footage.rows)) next.rows = next.rows.map((r, i) => (typeof footage.rows[i] === "string" ? { ...r, footage: footage.rows[i].slice(0, 20000) } : r));
   return next;
 }

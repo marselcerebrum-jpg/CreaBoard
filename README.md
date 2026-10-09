@@ -35,7 +35,7 @@ Ada dua Leader: **Leader Marketing** (skrip, rencana kalender, konfirmasi tayang
 - **Jenis skrip** Reguler / Trend / Urgent. Urgent bertenggat H-0; Trend tidak pernah dihitung telat (sifatnya mendadak).
 - **Hapus skrip** — tombol di detail skrip dan ikon tempat sampah di kolom Aksi. Penghapusan permanen (riwayat & file footage ikut terhapus). Leader Marketing bisa menghapus semua skrip; staff Marketing hanya skrip miliknya yang belum selesai diedit/tayang.
 - **Telat & Terlewat** — Telat (Marketing): skrip belum ready padahal sudah lewat H-3 sebelum upload. Telat (Creative): edit belum selesai padahal sudah lewat H-1 (hari upload). Terlewat: tanggal upload sudah lewat dan belum tayang. Konten yang sudah terlewat tidak dihitung dobel sebagai telat.
-- **Format teks** di editor skrip: tombol **B** / *I* atau Ctrl+B / Ctrl+I (ditulis sebagai `**tebal**` / `*miring*`).
+- **Editor skrip** (halaman penuh): tab Video / Carrousel / Singlepost, field utama (Judul konten, Apps, Tanggal upload, Editor), **Detail lainnya** (Info skrip, Jenis skrip, tanggal pengerjaan, talent, meta lain, keterangan), lalu tabel **Bagian · Skrip & arahan · Footage / Ilustrasi** dengan tombol tambah/hapus bagian dan caption. Format teks: tombol **B** / *I* di tiap kotak atau Ctrl+B / Ctrl+I (ditulis sebagai `**tebal**` / `*miring*`).
 - **Draf otomatis** — isi editor disimpan di browser dan bisa dipulihkan setelah refresh atau saat dibuka lagi.
 - Mengisi QC setelah Link hasil ada otomatis menandai Creative Done.
 - **Pembaruan otomatis** — perubahan dari akun lain langsung tampil tanpa refresh (Server-Sent Events).
