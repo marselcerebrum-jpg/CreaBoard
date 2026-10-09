@@ -15,6 +15,8 @@ export const MAX_ROWS = { Video: 12, Carousel: 10, Singlepost: 2 };
 // Jenis skrip. Trend & Urgent dibuat mendekati tanggal upload, jadi tenggatnya H-0 (hari upload).
 export const PRIORITIES = ["Reguler", "Trend", "Urgent"];
 export const deadlineDays = (role, priority) => (priority === "Trend" || priority === "Urgent" ? 0 : DEADLINE_DAYS[role]);
+/** Skrip Trend sifatnya mendadak: tidak pernah dihitung telat. */
+export const neverLate = (priority) => priority === "Trend";
 
 export class HttpError extends Error {
   constructor(status, message, details) {
@@ -294,7 +296,11 @@ export function applyWorkflow(prev, next, opts, now) {
 // ───────────── metrik dashboard ─────────────
 /**
  * Flag per konten. Satu definisi dipakai kartu dan tabel.
- * - "Terlewat" = tanggal upload lewat dan BELUM tayang (konten yang sudah tayang tidak dihitung).
+ * - "Telat" Marketing (lateScript) = skrip belum Ready padahal sudah lewat H-3 sebelum upload.
+ * - "Telat" Creative (lateEdit)    = edit belum Done padahal sudah lewat H-1 (= hari upload).
+ *   Keduanya hanya untuk konten yang tanggal uploadnya belum lewat (yang lewat masuk "Terlewat"),
+ *   dan skrip Trend tidak pernah telat.
+ * - "Terlewat" = tanggal upload sudah lewat dari hari ini dan BELUM tayang.
  */
 export function contentFlags(c, opts, today) {
   const s = opts.sem(c.script_status);
@@ -311,7 +317,8 @@ export function contentFlags(c, opts, today) {
     qc: cr === "Done" && qc === "" && !pub,
     revision: qc === "Revisi" && !pub,
     upload: qc === "Done" && !pub,
-    late: c.upload_date === today && !pub && cr !== "Done",
+    lateScript: !pub && !neverLate(c.priority) && !ready && c.upload_date >= today && today > addDays(c.upload_date, -deadlineDays("Marketing", c.priority)),
+    lateEdit: !pub && !neverLate(c.priority) && cr !== "Done" && c.upload_date >= today && today > addDays(c.upload_date, -deadlineDays("Creative", c.priority)),
     missed: c.upload_date < today && !pub,
     published: pub,
   };
@@ -335,13 +342,14 @@ export async function performance(db, opts, users, month, today, viewer) {
     const items = rows.map((c) => {
       const done = c[doneAt] && stampDay(c[doneAt]) <= today ? stampDay(c[doneAt]) : null;
       const deadline = addDays(c.upload_date, -deadlineDays(u.role, c.priority));
+      const trend = neverLate(c.priority);
       const status = done
-        ? done <= deadline ? "Tepat waktu" : "Selesai terlambat"
-        : today > deadline ? "Terlambat" : today === deadline ? "Jatuh tempo hari ini" : "Dalam tenggat";
+        ? trend || done <= deadline ? "Tepat waktu" : "Selesai terlambat"
+        : trend ? "Trend · tidak dihitung telat" : today > deadline ? "Terlambat" : today === deadline ? "Jatuh tempo hari ini" : "Dalam tenggat";
       return { id: c.id, type_no: c.type_no, title: c.title, type: c.type, priority: c.priority, upload_date: c.upload_date, deadline, done, status };
     });
     const doneItems = items.filter((i) => i.done);
-    const onTime = doneItems.filter((i) => i.done <= i.deadline).length;
+    const onTime = doneItems.filter((i) => i.status === "Tepat waktu").length;
     // Target yang tenggatnya lewat tetapi kontennya belum dibuat ikut dihitung telat.
     let missingLate = 0;
     for (const k of targets) {

@@ -32,7 +32,8 @@ Ada dua Leader: **Leader Marketing** (skrip, rencana kalender, konfirmasi tayang
 
 **Fitur kerja harian:**
 - **Nomor skrip per jenis** — Video, Carrousel, dan Singlepost masing-masing bernomor mulai dari 1. Klik nomor atau kolom USP/Keyword untuk membuka skrip.
-- **Jenis skrip** Reguler / Trend / Urgent. Trend & Urgent bertenggat H-0, terpisah dari tenggat reguler.
+- **Jenis skrip** Reguler / Trend / Urgent. Urgent bertenggat H-0; Trend tidak pernah dihitung telat (sifatnya mendadak).
+- **Telat & Terlewat** — Telat (Marketing): skrip belum ready padahal sudah lewat H-3 sebelum upload. Telat (Creative): edit belum selesai padahal sudah lewat H-1 (hari upload). Terlewat: tanggal upload sudah lewat dan belum tayang. Konten yang sudah terlewat tidak dihitung dobel sebagai telat.
 - **Format teks** di editor skrip: tombol **B** / *I* atau Ctrl+B / Ctrl+I (ditulis sebagai `**tebal**` / `*miring*`).
 - **Draf otomatis** — isi editor disimpan di browser dan bisa dipulihkan setelah refresh atau saat dibuka lagi.
 - Mengisi QC setelah Link hasil ada otomatis menandai Creative Done.

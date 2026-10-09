@@ -15,17 +15,18 @@ const METRICS = [
   ["qc", "Menunggu QC", "Hasil selesai, QC kosong", "qc"],
   ["revision", "Perlu revisi", "Hasil QC: revisi", "revision"],
   ["upload", "Siap upload", "QC done, belum tayang", "upload"],
-  ["late", "Telat", "Upload hari ini, hasil belum", "late"],
+  ["lateScript", "Telat", "Skrip belum ready, lewat H-3", "late"],
+  ["lateEdit", "Telat", "Edit belum selesai, lewat H-1", "late"],
   ["missed", "Terlewat", "Upload lewat, belum tayang", "missed"],
 ];
 // Kartu dibedakan per bidang (berlaku juga untuk Leader di bidang tersebut).
 const ROLE_CARDS = {
-  Marketing: ["script", "qc", "late", "missed"],
-  Creative: ["talent", "edit", "revision", "late", "missed"],
-  Talent: ["talent", "late", "missed"],
+  Marketing: ["script", "qc", "lateScript", "missed"],
+  Creative: ["talent", "edit", "revision", "lateEdit", "missed"],
+  Talent: ["talent", "lateEdit", "missed"],
 };
 // Kartu berbasis tenggat tidak mengikuti filter rentang tanggal upload.
-const DATELESS = ["late", "missed"];
+const DATELESS = ["lateScript", "lateEdit", "missed"];
 const FIELD_NAME = {
   script_status: "Info skrip", talent_name: "Talent", talent_status: "Status take", creative_user_id: "Editor",
   creative_status: "Creative", qc_status: "QC", app: "Apps", link: "Link hasil", notes: "Catatan",
@@ -201,7 +202,7 @@ function workloadPanel() {
   const rows = usersByRole("Creative").filter((u) => u.position === "Staff").map((u) => {
     const mine = state.contents.filter((c) => c.creative_user_id === u.id && scoped(c) && !c.flags.published);
     const open = mine.filter((c) => sem(c.creative_status) !== "Done").length;
-    return { u, open, done: mine.length - open, late: mine.filter((c) => c.flags.late || c.flags.missed).length };
+    return { u, open, done: mine.length - open, late: mine.filter((c) => c.flags.lateEdit || c.flags.missed).length };
   });
   const unassigned = state.contents.filter((c) => !c.creative_user_id && scoped(c) && !c.flags.published).length;
   const max = Math.max(1, ...rows.map((r) => r.open + r.done));

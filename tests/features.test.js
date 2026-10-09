@@ -209,3 +209,27 @@ test("salin rencana ke bulan berikutnya tanpa menimpa rencana yang sudah ada", a
   assert.deepEqual(nov.map((p) => [p.date, p.amount]), [["2026-11-05", 7]]); // 31 Nov tidak ada; 5 Nov tidak ditimpa
   assert.equal((await (await login("dimas")).call("POST", "/api/calendar/copy-next", { month: "2026-10" })).status, 403);
 });
+
+test("Telat & Terlewat: Marketing H-3 skrip, Creative H-1 edit, Trend tidak pernah telat, Terlewat = upload sudah lewat", async () => {
+  const mk = await login("nadia");
+  // Hari ini (NOW) = 2026-10-10.
+  const make = async (title, upload_date, { priority = "Reguler", ready = false } = {}) => {
+    let c = (await mk.call("POST", "/api/contents", { type: "Carousel", app: app1(), created_date: "2026-10-01", upload_date, priority, sheet: sheetFor("Carousel", title) })).data;
+    if (ready) c = (await mk.call("PATCH", `/api/contents/${c.id}`, { revision: c.revision, changes: { script_status: opt("script", "Ready") } })).data;
+    return c.flags;
+  };
+  // Marketing: skrip belum ready setelah lewat H-3 → telat.
+  assert.equal((await make("upload H+2 draft", "2026-10-12")).lateScript, true);
+  assert.equal((await make("upload H+3 draft", "2026-10-13")).lateScript, false);
+  assert.equal((await make("upload H+2 ready", "2026-10-12", { ready: true })).lateScript, false);
+  // Trend tidak pernah telat (skrip maupun edit).
+  const trend = await make("trend upload hari ini", "2026-10-10", { priority: "Trend" });
+  assert.equal(trend.lateScript, false);
+  assert.equal(trend.lateEdit, false);
+  // Creative: edit belum selesai di hari upload (lewat H-1) → telat; upload besok → belum.
+  assert.equal((await make("edit upload hari ini", "2026-10-10", { ready: true })).lateEdit, true);
+  assert.equal((await make("edit upload besok", "2026-10-11", { ready: true })).lateEdit, false);
+  // Terlewat: tanggal upload sudah lewat & belum tayang (tidak dobel dengan telat).
+  const past = await make("upload kemarin", "2026-10-09");
+  assert.deepEqual([past.missed, past.lateScript, past.lateEdit], [true, false, false]);
+});
