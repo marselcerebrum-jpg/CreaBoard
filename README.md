@@ -42,8 +42,8 @@ Ada dua Leader: **Leader Marketing** (skrip, rencana kalender, konfirmasi tayang
 - Mengisi QC setelah Link hasil ada otomatis menandai Creative Done.
 - **Pembaruan otomatis** — perubahan dari akun lain langsung tampil tanpa refresh (Server-Sent Events).
 - **Pencarian** mencakup judul dan seluruh isi skrip/brief.
-- **Konten kalender** — alur bulanan dalam 4 tampilan: **Ringkasan** (total rencana, aktual, selisih, pencapaian + progres per aplikasi), **Rencana Bulanan** (kalender Senin–Minggu per aplikasi & jenis konten, isi rencana harian, tandai warna = edit mandiri), **Aktual** (tabel selisih rencana vs aktual per aplikasi × jenis), **Evaluasi** (grafik per aplikasi, catatan otomatis, salin rencana ke bulan berikutnya, ekspor laporan CSV).
-- **Footage** — skrip Video: tiap baris kolom FOOTAGE punya kolom tempel link dan tombol **Unggah dari komputer**; kolom ini boleh diubah/ditambah semua peran (juga dari detail skrip, tersimpan otomatis); Carrousel/Singlepost: kotak footage di bawah skrip. File yang diunggah disimpan di server CreaBoard dan link-nya ditulis ke kolom footage. Semua unggahan terkumpul di **Setting → Link footage** per platform × jenis konten, tempat Leader juga menyimpan link folder Drive tiap kelompok.
+- **Konten kalender** — alur bulanan dalam 4 tampilan: **Ringkasan** (total rencana, aktual, selisih, pencapaian + kartu progres untuk semua platform), **Rencana Bulanan** (kalender Senin–Minggu per aplikasi & jenis konten, isi rencana harian, tandai warna = edit mandiri), **Aktual** (tabel selisih rencana vs aktual per aplikasi × jenis), **Evaluasi** (grafik per aplikasi, catatan otomatis, salin rencana ke bulan berikutnya, ekspor laporan CSV).
+- **Footage** — skrip Video: tiap baris kolom FOOTAGE punya kolom tempel link dan tombol **Unggah dari komputer**; kolom ini boleh diubah/ditambah semua peran (juga dari detail skrip, tersimpan otomatis); Carrousel/Singlepost: kotak footage di bawah skrip. File yang diunggah disimpan di server CreaBoard dan link-nya ditulis ke kolom footage. 
 
 Untuk mengosongkan data lokal: hentikan server, hapus folder `data/`, lalu jalankan lagi.
 

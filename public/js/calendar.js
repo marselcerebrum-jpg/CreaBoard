@@ -102,23 +102,20 @@ const appMark = (label) => `<span class="app-mark">${esc(label.trim().charAt(0).
 
 // ───────────── 01 Ringkasan ─────────────
 function summaryView(r) {
-  const active = r.apps.filter((a) => {
-    const t = r.appTotal(a.id);
-    return t.plan || t.actual;
-  });
-  const idle = r.apps.filter((a) => !active.includes(a));
-  const cards = active
-    .sort((a, b) => r.appTotal(b.id).plan - r.appTotal(a.id).plan)
+  // Semua platform tampil; yang sudah punya rencana di depan.
+  const cards = [...r.apps]
+    .sort((a, b) => r.appTotal(b.id).plan - r.appTotal(a.id).plan || r.appTotal(b.id).actual - r.appTotal(a.id).actual)
     .map((a) => {
       const t = r.appTotal(a.id);
       const p = pct(t.met, t.plan);
       const noPlan = !t.plan;
-      return `<article class="app-card">
+      const empty = !t.plan && !t.actual;
+      return `<article class="app-card ${empty ? "is-empty" : ""}">
         <header>${appMark(a.label)}</header>
-        <div class="app-big"><b>${noPlan ? t.actual : t.met} / ${t.plan}</b>${noPlan ? '<span class="tag-noplan">Belum ada rencana</span>' : `<span class="${p >= 100 ? "pct-ok" : p ? "" : "pct-zero"}">${pctText(p)}</span>`}</div>
-        <div class="small">${noPlan ? `${t.actual} skrip ready tanpa rencana` : "terpenuhi sesuai tanggal target"}</div>${bar(noPlan ? 0 : p)}
+        <div class="app-big"><b>${noPlan ? t.actual : t.met} / ${t.plan}</b>${empty ? '<span class="tag-empty">Belum ada rencana</span>' : noPlan ? '<span class="tag-noplan">Belum ada rencana</span>' : `<span class="${p >= 100 ? "pct-ok" : p ? "" : "pct-zero"}">${pctText(p)}</span>`}</div>
+        <div class="small">${empty ? "Belum ada rencana bulan ini" : noPlan ? `${t.actual} skrip ready tanpa rencana` : "terpenuhi sesuai tanggal target"}</div>${bar(noPlan ? 0 : p)}
         <div class="type-split">${TYPES.map((ty) => `<div><span>${typeLabel(ty)}</span><b>${r.by[a.id][ty].met} / ${r.by[a.id][ty].plan}</b></div>`).join("")}</div>
-        <button class="btn mini wide" data-action="cal-open" data-app="${esc(a.id)}">Lihat detail →</button>
+        <button class="btn mini wide" data-action="cal-open" data-app="${esc(a.id)}">${empty ? "Buat rencana →" : "Lihat detail →"}</button>
       </article>`;
     })
     .join("");
@@ -127,7 +124,7 @@ function summaryView(r) {
     ${statCards(r.total)}
     <h3 class="plan-sub">Progres per Aplikasi</h3>
     <div class="app-grid">${cards || '<div class="panel empty">Belum ada rencana atau aktual bulan ini.</div>'}</div>
-    ${idle.length ? `<div class="idle-apps"><span class="small">Belum ada rencana:</span> ${idle.map((a) => `<button class="chip" data-action="cal-open" data-app="${esc(a.id)}">${esc(a.label)}</button>`).join("")}</div>` : ""}`;
+`;
 }
 
 // ───────────── 02 Rencana bulanan (kalender per apps & jenis) ─────────────

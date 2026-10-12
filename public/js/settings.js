@@ -1,6 +1,5 @@
-// Halaman Setting: akun & role + pembagian apps, target KPI, dropdown (Leader), link footage, ganti password.
-import { $, api, delegate, errorText, esc, fmtDate, isLeader, optionsFor, optLabel, state, toast, TYPES, typeLabel, addDays } from "./core.js";
-import { renderFootageLibrary } from "./footage.js";
+// Halaman Setting: akun & role + pembagian apps, dropdown (Leader), ganti password.
+import { $, api, delegate, errorText, esc, icon, isLeader, optionsFor, optLabel, state, toast } from "./core.js";
 
 const head = (title) => `<h2 class="settings-title">${title}</h2>`;
 const body = (html) => ($("settingsBody").innerHTML = html);
@@ -12,9 +11,7 @@ const usersTitle = () => (state.me.role === "Marketing" ? "Akun, role & apps" : 
 
 const SECTIONS = {
   users: { title: () => usersTitle(), leader: true, show: () => showUsers() },
-  kpi: { title: () => "Target KPI", leader: true, show: () => showKpi() },
   options: { title: () => "Atur dropdown", leader: true, show: () => showOptions(optKey) },
-  footage: { title: () => "Link footage", show: () => showFootage() },
   password: { title: () => "Ganti password", show: () => showPassword() },
 };
 let section = "";
@@ -46,28 +43,67 @@ function showPassword() {
 }
 
 // ───────────── dropdown ─────────────
-const KEYS = { app: "Apps", talentName: "Talent", script: "Info skrip", talent: "Status Take", creative: "Creative", qc: "QC" };
+const GROUPS = {
+  app: ["Apps", "Platform tempat konten diunggah. Dipakai untuk pembagian apps, kalender, dan filter."],
+  talentName: ["Talent", "Nama talent yang bisa dipilih untuk konten Video."],
+  script: ["Info skrip", "Status skrip. Kategori menentukan skrip dihitung Draft atau sudah siap (Ready)."],
+  talent: ["Status take", "Status take talent untuk konten Video."],
+  creative: ["Creative", "Status editing oleh tim Creative."],
+  qc: ["QC", "Hasil pemeriksaan oleh tim Marketing."],
+};
 // Kolom yang punya kategori proses (dipakai alur & dashboard). Apps/Talent hanya nama.
 const HAS_CATEGORY = new Set(["script", "talent", "creative", "qc"]);
+const SEMANTICS = { script: ["Draft", "Ready"], talent: ["Belum", "Done", "Tidak perlu"], creative: ["Belum", "Done"], qc: ["", "Done", "Revisi"] };
+const SEM_LABEL = { Draft: "Draft", Ready: "Siap", Belum: "Belum", Done: "Selesai", "Tidak perlu": "Tidak perlu", "": "Belum QC", Revisi: "Revisi" };
 let optKey = "app";
 let optDraft = [];
+let optDirty = false;
 
 function showOptions(key = optKey) {
   optKey = key;
+  optDirty = false;
   optDraft = optionsFor(key).map((o) => ({ id: o.id, label: o.label, category: o.category ?? o.label }));
   renderOptions();
 }
+
+/** Arti proses sebuah pilihan, mengikuti rantai kategorinya (sama dengan aturan server). */
+function semanticOf(item, depth = 0) {
+  const ref = optDraft.find((o) => o.label === item.category);
+  if (ref && ref !== item && depth < optDraft.length) return semanticOf(ref, depth + 1);
+  return state.options.find((o) => o.id === item.id)?.semantic ?? SEMANTICS[optKey]?.[0] ?? "";
+}
+
 function renderOptions() {
   const withCategory = HAS_CATEGORY.has(optKey);
   const names = optDraft.map((o) => o.label.trim()).filter(Boolean);
-  body(`<div class="panel">${head("Atur dropdown")}
-    <div class="settings-tabs">${Object.entries(KEYS).map(([k, n]) => `<button class="btn mini ${k === optKey ? "active" : ""}" data-action="opt-tab" data-key="${k}">${n}</button>`).join("")}</div>
-    ${withCategory ? '<div class="setting-cols"><span>Nama pilihan</span><span>Kategori proses</span></div>' : ""}
-    <div>${optDraft.map((o, i) => `<div class="settingrow"><input aria-label="Nama pilihan ${i + 1}" data-opt-label="${i}" data-onchange="opt-rename" value="${esc(o.label)}" maxlength="60">
-      ${withCategory ? `<select aria-label="Kategori ${i + 1}" data-opt-cat="${i}">${names.map((n) => `<option value="${esc(n)}" ${n === o.category ? "selected" : ""}>${esc(n)}</option>`).join("")}</select>` : ""}
-      <button class="btn mini" data-action="opt-remove" data-index="${i}">Hapus</button></div>`).join("")}</div>
-    <div class="settings-actions"><button class="btn mini" data-action="opt-add">＋ Tambah pilihan</button><button class="btn primary" data-action="opt-save">Simpan dropdown</button></div></div>`);
+  const [title, desc] = GROUPS[optKey];
+  const count = (k) => (k === optKey ? optDraft.length : optionsFor(k).length);
+  body(`<div class="opt-shell">
+    <nav class="opt-groups" aria-label="Kolom dropdown">${Object.entries(GROUPS).map(([k, [n]]) => `<button class="${k === optKey ? "active" : ""}" data-action="opt-tab" data-key="${k}"><span>${n}</span><b>${count(k)}</b></button>`).join("")}</nav>
+    <section class="panel opt-panel">
+      <header class="opt-head"><div><h2>${title}</h2><p>${desc}</p></div></header>
+      <div class="opt-list ${withCategory ? "with-cat" : ""}">
+        <div class="opt-row opt-row-head"><span>Urutan</span><span>Nama pilihan</span>${withCategory ? "<span>Kategori proses</span>" : ""}<span></span></div>
+        ${optDraft.map((o, i) => {
+          const sem = withCategory ? semanticOf(o) : null;
+          return `<div class="opt-row">
+          <div class="opt-order"><button type="button" class="icon-act" data-action="opt-move" data-index="${i}" data-dir="-1" ${i === 0 ? "disabled" : ""} aria-label="Naikkan ${esc(o.label)}">↑</button><button type="button" class="icon-act" data-action="opt-move" data-index="${i}" data-dir="1" ${i === optDraft.length - 1 ? "disabled" : ""} aria-label="Turunkan ${esc(o.label)}">↓</button></div>
+          <input aria-label="Nama pilihan ${i + 1}" data-opt-label="${i}" data-onchange="opt-rename" value="${esc(o.label)}" maxlength="60">
+          ${withCategory ? `<div class="opt-cat"><select aria-label="Kategori ${esc(o.label)}" data-opt-cat="${i}" data-onchange="opt-recat">${names.map((n) => `<option value="${esc(n)}" ${n === o.category ? "selected" : ""}>${esc(n)}</option>`).join("")}</select><span class="opt-sem sem-${esc(sem || "none").replace(/\s/g, "")}" title="Arti proses">${esc(SEM_LABEL[sem] ?? sem)}</span></div>` : ""}
+          <button type="button" class="icon-act danger" data-action="opt-remove" data-index="${i}" aria-label="Hapus ${esc(o.label)}">${icon("trash", 16)}</button></div>`;
+        }).join("")}
+      </div>
+      <button type="button" class="ck-add" data-action="opt-add">＋ Tambah pilihan</button>
+      <footer class="opt-foot"><span class="small">${optDirty ? "● Ada perubahan yang belum disimpan" : `${optDraft.length} pilihan`}</span><button class="btn primary" data-action="opt-save">Simpan perubahan</button></footer>
+    </section></div>`);
 }
+// Penanda perubahan langsung muncul saat mengetik nama pilihan.
+document.addEventListener("input", (e) => {
+  if (!e.target.matches?.("[data-opt-label]")) return;
+  optDirty = true;
+  const note = document.querySelector(".opt-foot .small");
+  if (note) note.textContent = "● Ada perubahan yang belum disimpan";
+});
 function captureOptions() {
   document.querySelectorAll("[data-opt-cat]").forEach((el) => (optDraft[Number(el.dataset.optCat)].category = el.value));
   document.querySelectorAll("[data-opt-label]").forEach((el) => {
@@ -140,43 +176,6 @@ async function refreshBootstrap() {
   Object.assign(state, { users: b.users, options: b.options });
 }
 
-// ───────────── link footage ─────────────
-async function showFootage() {
-  body('<div id="footageLibrary"></div>');
-  await renderFootageLibrary($("footageLibrary"));
-}
-
-// ───────────── KPI ─────────────
-let kpiMonth = "";
-async function showKpi() {
-  kpiMonth ||= state.today.slice(0, 7);
-  const list = await api("GET", `/api/kpis?month=${kpiMonth}`);
-  // Leader hanya mengatur target tim yang dipimpinnya.
-  const staff = state.users.filter((u) => u.active && u.position === "Staff" && u.role === state.me.role);
-  body(`<form id="kpiForm" class="panel">${head("Target KPI")}<div class="grid">
-      <div class="field"><label for="kStaff">Staff</label><select id="kStaff" required>${staff.map((u) => `<option value="${u.id}">${esc(u.name)}</option>`).join("")}</select></div>
-      <div class="field"><label for="kApp">Apps</label><select id="kApp">${optionsFor("app").map((o) => `<option value="${esc(o.id)}">${esc(o.label)}</option>`).join("")}</select></div>
-      <div class="field"><label for="kType">Jenis konten</label><select id="kType">${TYPES.map((t) => `<option value="${t}">${typeLabel(t)}</option>`).join("")}</select></div>
-      <div class="field"><label for="kAmount">Target jumlah</label><input id="kAmount" type="number" min="1" step="1" value="3" required></div>
-      <div class="field"><label for="kUpload">Tanggal upload</label><input id="kUpload" type="date" value="${addDays(state.today, 3)}" required></div>
-      <div class="field"><label for="kWork">Tanggal pengerjaan (maks. H-${state.deadlines[state.me.role] ?? 3})</label><input id="kWork" type="date" value="${state.today}" required></div>
-    </div><button class="btn primary" style="margin-top:12px">Simpan target</button></form>
-    <div class="filters"><div class="field" style="max-width:200px"><label for="kMonth">Bulan upload</label><input id="kMonth" type="month" value="${kpiMonth}" data-onchange="kpi-month"></div></div>
-    <div class="panel" style="overflow:auto"><table><thead><tr><th>Staff</th><th>Apps</th><th>Jenis</th><th>Pengerjaan</th><th>Upload</th><th>Target</th><th></th></tr></thead><tbody>
-      ${list.map((k) => `<tr><td>${esc(k.user_name)}</td><td>${esc(optLabel(k.app))}</td><td>${typeLabel(k.type)}</td><td>${fmtDate(k.work_date)}</td><td>${fmtDate(k.upload_date)}</td><td>${k.amount}</td><td><button class="btn mini danger" data-action="kpi-delete" data-id="${k.id}">Hapus</button></td></tr>`).join("") || '<tr><td colspan="7" class="empty">Belum ada target bulan ini.</td></tr>'}
-    </tbody></table></div>`);
-  $("kpiForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    try {
-      await api("POST", "/api/kpis", { user_id: Number($("kStaff").value), app: $("kApp").value, type: $("kType").value, amount: Number($("kAmount").value), work_date: $("kWork").value, upload_date: $("kUpload").value });
-      toast("Target KPI disimpan");
-      showKpi();
-    } catch (err) {
-      toast(errorText(err), { error: true });
-    }
-  });
-}
-
 delegate(document.body, "click", {
   "settings-section": (el) => {
     section = el.dataset.section;
@@ -184,20 +183,33 @@ delegate(document.body, "click", {
   },
   "opt-tab": (el) => {
     captureOptions();
+    if (optDirty && !confirm("Perubahan dropdown ini belum disimpan. Pindah dan buang perubahan?")) return;
     showOptions(el.dataset.key);
+  },
+  "opt-move": (el) => {
+    captureOptions();
+    const i = Number(el.dataset.index);
+    const j = i + Number(el.dataset.dir);
+    if (j < 0 || j >= optDraft.length) return;
+    [optDraft[i], optDraft[j]] = [optDraft[j], optDraft[i]];
+    optDirty = true;
+    renderOptions();
   },
   "opt-add": () => {
     captureOptions();
     let label = "Pilihan baru";
     for (let n = 2; optDraft.some((o) => o.label === label); n++) label = `Pilihan baru ${n}`;
     optDraft.push({ label, category: label });
+    optDirty = true;
     renderOptions();
+    document.querySelector(`[data-opt-label="${optDraft.length - 1}"]`)?.select();
   },
   "opt-remove": (el) => {
     captureOptions();
     const [removed] = optDraft.splice(Number(el.dataset.index), 1);
     // Kategori yang merujuk pilihan yang dihapus kembali ke nama sendiri.
     optDraft.forEach((o) => o.category === removed.label && (o.category = o.label));
+    optDirty = true;
     renderOptions();
   },
   "opt-save": async () => {
@@ -220,18 +232,20 @@ delegate(document.body, "click", {
       toast(errorText(e), { error: true });
     }
   },
-  "kpi-delete": async (el) => {
-    if (!confirm("Hapus target ini?")) return;
-    await api("DELETE", `/api/kpis/${el.dataset.id}`, {}).catch((e) => toast(errorText(e), { error: true }));
-    showKpi();
-  },
 });
 
 delegate(document.body, "change", {
   "new-user-scope": () => newUserApps(),
+  // Render ulang ditunda: "change" dipicu saat kolom ditinggalkan (blur), tepat ketika tombol lain diklik.
   "opt-rename": () => {
     captureOptions();
-    renderOptions();
+    optDirty = true;
+    setTimeout(() => $("settingsBody")?.querySelector(".opt-shell") && (captureOptions(), renderOptions()));
+  },
+  "opt-recat": () => {
+    captureOptions();
+    optDirty = true;
+    setTimeout(() => $("settingsBody")?.querySelector(".opt-shell") && (captureOptions(), renderOptions()));
   },
   "user-field": async (el) => {
     const field = el.dataset.field;
@@ -257,9 +271,5 @@ delegate(document.body, "change", {
       el.checked = !el.checked;
       toast(errorText(e), { error: true });
     }
-  },
-  "kpi-month": (el) => {
-    kpiMonth = el.value;
-    showKpi();
   },
 });
