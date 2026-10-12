@@ -54,7 +54,7 @@ export function readTable(sh, { footageEdit = false } = {}) {
   ].join("");
   const head = video
     ? '<tr><th colspan="2" rowspan="2">SKRIP</th><th rowspan="2">FOOTAGE</th><th rowspan="2">KETERANGAN</th><th colspan="2">CAPTION</th></tr><tr><th>TIKTOK</th><th>INSTAGRAM</th></tr>'
-    : '<tr><th colspan="2">SKRIP</th><th>KETERANGAN</th><th>CAPTION</th></tr>';
+    : '<tr><th colspan="2">SKRIP</th><th>FOOTAGE / ILUSTRASI</th><th>CAPTION</th></tr>';
   const cols = video
     ? '<col style="width:10%"><col style="width:31%"><col style="width:23%"><col style="width:12%"><col style="width:12%"><col style="width:12%">'
     : '<col style="width:10%"><col style="width:44%"><col style="width:24%"><col style="width:22%">';
@@ -264,7 +264,7 @@ function renderEditor(c) {
   ].join("");
   const head = video
     ? '<tr><th colspan="2" rowspan="2">SKRIP</th><th rowspan="2">FOOTAGE</th><th rowspan="2">KETERANGAN</th><th colspan="2">CAPTION</th></tr><tr><th>TIKTOK</th><th>INSTAGRAM</th></tr>'
-    : '<tr><th colspan="2">SKRIP</th><th>KETERANGAN</th><th>CAPTION</th></tr>';
+    : '<tr><th colspan="2">SKRIP</th><th>FOOTAGE / ILUSTRASI</th><th>CAPTION</th></tr>';
   const cols = video
     ? '<col style="width:10%"><col style="width:31%"><col style="width:23%"><col style="width:12%"><col style="width:12%"><col style="width:12%">'
     : '<col style="width:10%"><col style="width:44%"><col style="width:24%"><col style="width:22%">';
