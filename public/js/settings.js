@@ -51,7 +51,7 @@ const GROUPS = {
   creative: ["Creative", "Status editing oleh tim Creative."],
   qc: ["QC", "Hasil pemeriksaan oleh tim Marketing."],
   priority: ["Jenis skrip", "Nama bebas. Kategori menentukan aturannya: Trend dan Urgent tidak dihitung telat, Urgent selalu tampil paling atas."],
-  editor: ["Editor", "Akun Creative yang muncul di dropdown Editor. Akun baru dibuat di Akun, role & apps."],
+  editor: ["Editor", "Centang akun Creative yang muncul di dropdown Editor, atau tambah editor baru di bawah."],
 };
 // Kolom yang punya kategori proses (dipakai alur & dashboard). Apps/Talent hanya nama.
 const HAS_CATEGORY = new Set(["script", "talent", "creative", "qc", "priority"]);
@@ -82,7 +82,7 @@ function semanticOf(item, depth = 0) {
 
 const groupNav = () => `<nav class="opt-groups" aria-label="Kolom dropdown">${Object.entries(GROUPS).map(([k, [n]]) => `<button class="${k === optKey ? "active" : ""}" data-action="opt-tab" data-key="${k}"><span>${n}</span><b>${k === "editor" ? (k === optKey ? editorDraft.size : state.users.filter((u) => u.role === "Creative" && u.active && u.editor).length) : k === optKey ? optDraft.length : optionsFor(k).length}</b></button>`).join("")}</nav>`;
 
-/** Editor: centang akun Creative yang muncul di dropdown Editor. */
+/** Editor: centang akun Creative yang muncul di dropdown Editor, atau tambah editor baru (akun staff Creative). */
 function renderEditors() {
   const [title, desc] = GROUPS.editor;
   const people = state.users.filter((u) => u.role === "Creative").sort((a, b) => (b.active - a.active) || a.name.localeCompare(b.name));
@@ -96,9 +96,30 @@ function renderEditors() {
           <span><b>${esc(u.name)}</b> <span class="small">${esc(u.username)}</span></span>
           <span class="small">${esc(u.position)} Creative${u.active ? "" : " · nonaktif"}</span></label>`).join("") || '<p class="empty">Belum ada akun Creative.</p>'}
       </div>
+      <details class="editor-add" ${people.length ? "" : "open"}><summary class="ck-add">＋ Tambah editor</summary>
+        <form id="editorForm2" class="editor-add-form">
+          <p class="small">Editor adalah akun staff Creative: ia login untuk melihat skrip yang ditugaskan, mengisi link hasil, dan tercatat di Performa.</p>
+          <div class="field"><label for="edName">Nama</label><input id="edName" required maxlength="100" placeholder="Contoh: Zia"></div>
+          <div class="field"><label for="edUser">Username</label><input id="edUser" required pattern="[a-zA-Z0-9._\-]{3,40}" autocomplete="off" placeholder="contoh: zia"></div>
+          <div class="field"><label for="edPass">Password awal (min. 8)</label><input id="edPass" type="text" minlength="8" required autocomplete="off"></div>
+          <div class="field editor-add-submit"><button class="btn primary">Tambah editor</button></div>
+        </form></details>
       <footer class="opt-foot"><span class="small">${optDirty ? "● Ada perubahan yang belum disimpan" : `${editorDraft.size} editor`}</span>
         <div class="opt-foot-actions"><button class="btn" data-action="settings-section" data-section="users">Kelola akun</button><button class="btn primary" data-action="editor-save">Simpan perubahan</button></div></footer>
     </section></div>`);
+  $("editorForm2")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      const { id } = await api("POST", "/api/users", { name: $("edName").value, username: $("edUser").value, password: $("edPass").value, position: "Staff", role: "Creative", apps: [] });
+      await refreshBootstrap();
+      editorDraft.add(id); // langsung tampil di dropdown Editor (bawaan staff Creative)
+      toast(`Editor ${$("edName").value} ditambahkan. Bagikan username & password awalnya.`);
+      renderEditors();
+      window.dispatchEvent(new Event("cs:changed"));
+    } catch (err) {
+      toast(errorText(err), { error: true });
+    }
+  });
 }
 
 function renderOptions() {
