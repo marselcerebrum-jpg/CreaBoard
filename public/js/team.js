@@ -3,7 +3,7 @@ import { $, addDays, api, prioSem, contentNo, delegate, errorText, esc, fmtDate,
 
 let role = "";
 let month = "";
-const COLORS = ["#3A5A40", "#588157", "#7F9467"];
+const COLORS = ["#003049", "#F77F00", "#D62828"];
 
 function card(label, value, target, color) {
   const pct = target ? Math.round((value / target) * 100) : 0;
@@ -48,7 +48,7 @@ export async function renderTeam(root) {
       const cards = TYPES.map((t, i) => card(`${verb} ${typeLabel(t).toLowerCase()}`, p.byType[t].done, p.byType[t].target, COLORS[i])).join("")
         + `<div class="team-card"><label>Tepat waktu (H-${days})</label><strong>${p.onTimeRate == null ? "—" : `${p.onTimeRate}%`}</strong></div>`
         + `<div class="team-card"><label>Sisa target</label><strong>${p.remaining}</strong></div>`
-        + `<div class="team-card"><label>Telat</label><strong style="color:${p.late ? "#B42318" : "#344E41"}">${p.late}</strong></div>`;
+        + `<div class="team-card"><label>Telat</label><strong style="color:${p.late ? "#B71F1F" : "#003049"}">${p.late}</strong></div>`;
       return `<article class="person"><div class="person-head"><div class="person-id"><div class="avatar">${esc(initials)}</div><b>${esc(p.user.name)}</b></div></div><div class="team-cards">${cards}</div>
         <details><summary>Rincian konten & ketepatan waktu</summary><div style="overflow:auto"><table><thead><tr><th>Konten</th><th>Jenis</th><th>Upload</th><th>Batas selesai</th><th>Selesai</th><th>Status</th></tr></thead>
         <tbody>${p.items.map((i) => `<tr><td><button class="number" data-action="detail" data-id="${i.id}">${esc(contentNo(i))}</button> ${esc(i.title)}${prioSem(i.priority) !== "Reguler" ? ` <span class="badge b-prio">${esc(optLabel(i.priority) || i.priority)}</span>` : ""}</td><td>${typeLabel(i.type)}</td><td>${fmtDate(i.upload_date)}</td><td>${fmtDate(i.deadline)}</td><td>${i.done ? fmtDate(i.done) : "Belum selesai"}</td><td>${esc(i.status)}</td></tr>`).join("") || '<tr><td colspan="6" class="small">Belum ada konten.</td></tr>'}</tbody></table></div></details></article>`;
