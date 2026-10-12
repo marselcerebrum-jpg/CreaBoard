@@ -4,7 +4,7 @@
   "description": "Workspace Marketing & Creative",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#FBF8EF",
-  "theme_color": "#003049",
+  "background_color": "#FAFAF0",
+  "theme_color": "#C62828",
   "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
 }
