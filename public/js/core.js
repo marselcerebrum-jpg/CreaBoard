@@ -71,6 +71,10 @@ export function optionTags(key, current, { blank, mine = false } = {}) {
 
 export const userName = (id) => state.users.find((u) => u.id === id)?.name ?? "";
 export const usersByRole = (role) => state.users.filter((u) => u.role === role && u.active);
+/** Akun yang muncul di dropdown Editor (diatur Leader di Setting → Atur dropdown → Editor). */
+export const editors = () => state.users.filter((u) => u.role === "Creative" && u.active && u.editor);
+/** Arti proses jenis skrip (Reguler / Trend / Urgent) dari id pilihannya; nilai lama berupa teks tetap dikenali. */
+export const prioSem = (p) => opt(p)?.semantic || (["Reguler", "Trend", "Urgent"].includes(p) ? p : "Reguler");
 export const isLeader = () => state.me?.position === "Leader";
 /** Ada dua Leader: Leader Marketing dan Leader Creative. */
 export const leads = (role) => isLeader() && state.me.role === role;

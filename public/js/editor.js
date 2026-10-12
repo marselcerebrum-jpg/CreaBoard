@@ -1,6 +1,6 @@
 // Pemilih jenis konten, editor skrip (layout worksheet), detail, dan konfirmasi tayang.
 import {
-  $, addDays, api, ApiError, closeModal, contentNo, delegate, downloadUrl, errorText, esc, fmtDate, fmtStamp, hostOf, icon, leads, myApps, openModal, optionTags, optLabel, reloadContents, richText, state, toast, typeLabel, userName,
+  $, addDays, api, ApiError, prioSem, closeModal, contentNo, delegate, downloadUrl, errorText, esc, fmtDate, fmtStamp, hostOf, icon, leads, myApps, openModal, optionTags, optLabel, reloadContents, richText, state, toast, typeLabel, userName,
 } from "./core.js";
 import { uploadFile } from "./footage.js";
 import { updateContent } from "./worksheet.js";
@@ -279,7 +279,7 @@ function renderEditor(c) {
         <div class="field"><label for="eApp">Apps</label><select id="eApp" ${dis("app")}>${optionTags("app", c?.app, { mine: true })}</select></div>
         <div class="field"><label for="eUpload">Tanggal upload</label><input id="eUpload" type="date" required value="${c?.upload_date ?? addDays(state.today, 3)}" ${dis("upload_date")}></div>
         <div class="field"><label for="eTitle">Info skrip / judul konten</label><input id="eTitle" data-path="title" value="${esc(sh.title)}" placeholder="Contoh: Syarat wajib daftar RBB 2026" maxlength="200"></div>
-        <div class="field"><label for="ePriority">Jenis skrip</label><select id="ePriority" ${dis("priority")}>${["Reguler", "Trend", "Urgent"].map((p) => `<option ${(c?.priority ?? "Reguler") === p ? "selected" : ""}>${p}</option>`).join("")}</select></div>
+        <div class="field"><label for="ePriority">Jenis skrip</label><select id="ePriority" ${dis("priority")}>${optionTags("priority", c?.priority ?? state.options.find((o) => o.key === "priority" && o.semantic === "Reguler" && !o.archived)?.id)}</select></div>
         <div class="field"><label for="eKeyword">Kata kunci</label><input id="eKeyword" data-path="keyword" value="${esc(sh.keyword ?? "")}" placeholder="Contoh: syarat RBB, lowongan BUMN"></div>
       </section>
       <div class="ck-tablewrap"><table class="ck-table"><colgroup>${cols}</colgroup><thead>${head}</thead><tbody>${body}</tbody></table></div>
@@ -418,7 +418,7 @@ export async function openDetail(id) {
         <button class="btn primary" style="margin-top:12px" data-action="publish" data-id="${c.id}" data-revision="${c.revision}">Simpan konfirmasi</button></div>`
     : "";
   openModal(
-    `<div class="modalhead"><div><div class="eyebrow">${esc(optLabel(c.app))} / ${typeLabel(c.type)} / SKRIP ${esc(contentNo(c))}${c.priority && c.priority !== "Reguler" ? ` · ${esc(c.priority.toUpperCase())}` : ""}</div><h2 id="modalTitle">${esc(c.title)}</h2></div><button class="close" aria-label="Tutup" data-action="close-modal">×</button></div>
+    `<div class="modalhead"><div><div class="eyebrow">${esc(optLabel(c.app))} / ${typeLabel(c.type)} / SKRIP ${esc(contentNo(c))}${prioSem(c.priority) !== "Reguler" ? ` · ${esc((optLabel(c.priority) || c.priority).toUpperCase())}` : ""}</div><h2 id="modalTitle">${esc(c.title)}</h2></div><button class="close" aria-label="Tutup" data-action="close-modal">×</button></div>
     <div class="modalbody"><div class="inline-meta">${chips.map((x) => `<span>${esc(x)}</span>`).join("")}</div>
       ${published}${readTable(c.sheet, { footageEdit: c.editable.includes("footage") })}
       <div class="note">Catatan: ${esc(c.notes) || "Belum ada catatan produksi."}</div>${publishForm}

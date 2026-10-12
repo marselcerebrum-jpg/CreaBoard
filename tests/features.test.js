@@ -82,7 +82,7 @@ test("Trend/Urgent: tenggat H-0 sehingga tidak otomatis telat", async () => {
   };
   const reg = await mkReady("Reguler", "Reguler mepet");
   const tr = await mkReady("Trend", "Trend mepet");
-  assert.equal(tr.priority, "Trend");
+  assert.equal(O.length && (await db.one("select semantic from options where id = ?", [tr.priority])).semantic, "Trend");
   const team = (await lm.call("GET", "/api/team?month=2026-10")).data;
   const items = team.people.find((p) => p.user.id === mk.id).items;
   assert.equal(items.find((i) => i.id === reg.id).status, "Selesai terlambat");

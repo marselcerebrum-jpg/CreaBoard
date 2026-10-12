@@ -11,7 +11,7 @@ import {
 } from "./auth.js";
 import {
   actualCounts, addDays, applyWorkflow, canSee, contentFlags, DEADLINE_DAYS, defaultSheet, editableFields, fail, HttpError,
-  canDeleteContent, isDate, isHttpUrl, isLeader, jakartaDate, leads, manages, mergeFootage, normalizeSheet, optionIndex, performance, PRIORITIES, scriptReadyErrors, titleFromSheet, TYPES,
+  canDeleteContent, isDate, isHttpUrl, isLeader, jakartaDate, leads, manages, mergeFootage, normalizeSheet, optionIndex, performance, scriptReadyErrors, titleFromSheet, TYPES,
 } from "./rules.js";
 
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
@@ -60,7 +60,7 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
   // ───────────── helpers (q = db atau transaksi) ─────────────
   const appsOf = async (q, userId) => (await q.query("select app from user_apps where user_id = ? order by app", [userId])).map((r) => r.app);
   const users = async (q = db) => {
-    const rows = await q.query("select id, username, name, position, role, active from users order by name");
+    const rows = await q.query("select id, username, name, position, role, active, coalesce(editor, case when role = 'Creative' and position = 'Staff' then 1 else 0 end) editor from users order by name");
     const apps = await q.query("select user_id, app from user_apps order by app");
     return rows.map((u) => ({ ...u, apps: apps.filter((a) => a.user_id === u.id).map((a) => a.app) }));
   };
@@ -108,6 +108,9 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
         [contentId, userId, f, a == null ? null : String(a), b == null ? null : String(b), at]);
     }
   };
+  /** Editor = akun Creative aktif yang ditandai tampil di dropdown Editor. */
+  const isEditor = async (q, id) =>
+    id == null || Boolean(await q.one("select 1 from users where id = ? and active = 1 and role = 'Creative' and coalesce(editor, case when role = 'Creative' and position = 'Staff' then 1 else 0 end) = 1", [Number(id)]));
   const userExists = async (q, id, role) =>
     id == null || Boolean(await q.one("select 1 from users where id = ? and active = 1 and role = ?", [Number(id), role]));
   const monthOf = (query) => (/^\d{4}-(0[1-9]|1[0-2])$/.test(query.month ?? "") ? query.month : today().slice(0, 7));
@@ -146,7 +149,7 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
   route("GET", "/api/bootstrap", async ({ user }) => ({
     me: user,
     today: today(),
-    users: (await users()).map(({ id, name, position, role, active, apps }) => ({ id, name, position, role, active, apps })),
+    users: (await users()).map(({ id, username, name, position, role, active, apps, editor }) => ({ id, username, name, position, role, active, apps, editor })),
     options: (await optionIndex(db)).rows,
     deadlines: DEADLINE_DAYS,
   }));
@@ -191,14 +194,14 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
       link: "",
       notes: String(body.notes ?? "").slice(0, 5000),
       sheet,
-      priority: PRIORITIES.includes(body.priority) ? body.priority : "Reguler",
+      priority: body.priority ?? null, // dinormalkan applyWorkflow ke id pilihan jenis skrip
       // Leader Marketing boleh langsung menugaskan skrip ke staff Marketing; staff selalu pemiliknya sendiri.
       marketing_user_id: leads(user, "Marketing") && body.marketing_user_id ? Number(body.marketing_user_id) : user.id,
       creative_user_id: body.creative_user_id ? Number(body.creative_user_id) : null,
     };
     checkAppAllowed(user, draft.app);
     if (!draft.title) fail(422, type === "Video" ? "Kata kunci perlu diisi." : type === "Carousel" ? "Tema carrousel perlu diisi." : "Judul / hook perlu diisi.");
-    if (!(await userExists(db, draft.creative_user_id, "Creative"))) fail(422, "Editor tidak valid");
+    if (!(await isEditor(db, draft.creative_user_id))) fail(422, "Editor tidak valid");
     if (!(await userExists(db, draft.marketing_user_id, "Marketing"))) fail(422, "Pemilik Marketing tidak valid");
     const empty = { script_status: null, talent_status: null, creative_status: null, qc_status: null, link: "", sheet: draft.sheet, type };
     applyWorkflow(empty, draft, opts, nowIso());
@@ -239,7 +242,7 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
         next[k] = next[k] === "" || next[k] == null ? null : Number(next[k]);
         if (next[k] !== null && !Number.isSafeInteger(next[k])) fail(422, "Pengguna tidak valid");
       }
-      if ("creative_user_id" in changes && !(await userExists(q, next.creative_user_id, "Creative"))) fail(422, "Editor tidak valid");
+      if ("creative_user_id" in changes && next.creative_user_id !== prev.creative_user_id && !(await isEditor(q, next.creative_user_id))) fail(422, "Editor tidak valid");
       if ("marketing_user_id" in changes && !(await userExists(q, next.marketing_user_id, "Marketing"))) fail(422, "Pemilik Marketing tidak valid");
       if (next.talent_name === "") next.talent_name = null;
       applyWorkflow(prev, next, opts, nowIso());
@@ -507,11 +510,24 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
     }
     await db.tx(async (q) => {
       await q.run("update users set name = ?, position = ?, role = ?, active = ? where id = ?", [next.name, next.position, next.role, next.active, target.id]);
+      // Peran/posisi berubah: tampil sebagai editor kembali ke bawaan (staff Creative = ya).
+      if (next.role !== target.role || next.position !== target.position) await q.run("update users set editor = null where id = ?", [target.id]);
       if (body.password) await q.run("update users set password_hash = ? where id = ?", [hashPassword(body.password), target.id]);
       if (next.role !== "Marketing" || next.position !== "Staff") await q.run("delete from user_apps where user_id = ?", [target.id]);
       if (!next.active || body.password) await destroyUserSessions(q, target.id);
     });
     return { ok: true };
+  });
+
+  // ───────────── editor (Setting → Atur dropdown → Editor) ─────────────
+  route("PUT", "/api/editors", async ({ user, body }) => {
+    requireLeader(user);
+    const ids = Array.isArray(body.ids) ? body.ids.map(Number).filter(Number.isSafeInteger) : fail(422, "Daftar editor tidak valid");
+    await db.tx(async (q) => {
+      await q.run("update users set editor = 0 where role = 'Creative'");
+      for (const id of ids) await q.run("update users set editor = 1 where id = ? and role = 'Creative'", [id]);
+    });
+    return users();
   });
 
   // ───────────── pembagian apps ─────────────
@@ -700,7 +716,7 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
   route("PUT", "/api/options/:key", async ({ user, params, body }) => {
     requireLeader(user);
     const key = params.key;
-    const allowed = { app: null, talentName: null, script: ["Draft", "Ready"], talent: ["Belum", "Done", "Tidak perlu"], creative: ["Belum", "Done"], qc: ["", "Done", "Revisi"] };
+    const allowed = { app: null, talentName: null, script: ["Draft", "Ready"], talent: ["Belum", "Done", "Tidak perlu"], creative: ["Belum", "Done"], qc: ["", "Done", "Revisi"], priority: ["Reguler", "Trend", "Urgent"] };
     if (!(key in allowed)) fail(404, "Kolom tidak dikenal");
     const list = Array.isArray(body.options) && body.options.every((o) => o && typeof o === "object") ? body.options : fail(422, "Daftar pilihan tidak valid");
     const labels = list.map((o) => String(o.label ?? "").trim());
@@ -745,7 +761,8 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
       const keep = new Set();
       const usedIds = new Set((await q.query(
         `select app id from contents union select script_status from contents union select talent_status from contents
-         union select talent_name from contents union select creative_status from contents union select qc_status from contents`,
+         union select talent_name from contents union select creative_status from contents union select qc_status from contents
+         union select priority from contents`,
       )).map((r) => r.id));
       for (const it of items) {
         if (it.found) {

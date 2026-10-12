@@ -50,11 +50,14 @@ const GROUPS = {
   talent: ["Status take", "Status take talent untuk konten Video."],
   creative: ["Creative", "Status editing oleh tim Creative."],
   qc: ["QC", "Hasil pemeriksaan oleh tim Marketing."],
+  priority: ["Jenis skrip", "Nama bebas. Kategori menentukan aturannya: Trend dan Urgent tidak dihitung telat, Urgent selalu tampil paling atas."],
+  editor: ["Editor", "Akun Creative yang muncul di dropdown Editor. Akun baru dibuat di Akun, role & apps."],
 };
 // Kolom yang punya kategori proses (dipakai alur & dashboard). Apps/Talent hanya nama.
-const HAS_CATEGORY = new Set(["script", "talent", "creative", "qc"]);
-const SEMANTICS = { script: ["Draft", "Ready"], talent: ["Belum", "Done", "Tidak perlu"], creative: ["Belum", "Done"], qc: ["", "Done", "Revisi"] };
-const SEM_LABEL = { Draft: "Draft", Ready: "Siap", Belum: "Belum", Done: "Selesai", "Tidak perlu": "Tidak perlu", "": "Belum QC", Revisi: "Revisi" };
+const HAS_CATEGORY = new Set(["script", "talent", "creative", "qc", "priority"]);
+const SEMANTICS = { script: ["Draft", "Ready"], talent: ["Belum", "Done", "Tidak perlu"], creative: ["Belum", "Done"], qc: ["", "Done", "Revisi"], priority: ["Reguler", "Trend", "Urgent"] };
+const SEM_LABEL = { Draft: "Draft", Ready: "Siap", Belum: "Belum", Done: "Selesai", "Tidak perlu": "Tidak perlu", "": "Belum QC", Revisi: "Revisi", Reguler: "Reguler", Trend: "Trend · tanpa telat", Urgent: "Urgent · paling atas" };
+let editorDraft = null; // id akun yang dicentang sebagai editor
 let optKey = "app";
 let optDraft = [];
 let optDirty = false;
@@ -62,6 +65,10 @@ let optDirty = false;
 function showOptions(key = optKey) {
   optKey = key;
   optDirty = false;
+  if (key === "editor") {
+    editorDraft = new Set(state.users.filter((u) => u.role === "Creative" && u.editor).map((u) => u.id));
+    return renderEditors();
+  }
   optDraft = optionsFor(key).map((o) => ({ id: o.id, label: o.label, category: o.category ?? o.label }));
   renderOptions();
 }
@@ -73,13 +80,32 @@ function semanticOf(item, depth = 0) {
   return state.options.find((o) => o.id === item.id)?.semantic ?? SEMANTICS[optKey]?.[0] ?? "";
 }
 
+const groupNav = () => `<nav class="opt-groups" aria-label="Kolom dropdown">${Object.entries(GROUPS).map(([k, [n]]) => `<button class="${k === optKey ? "active" : ""}" data-action="opt-tab" data-key="${k}"><span>${n}</span><b>${k === "editor" ? (k === optKey ? editorDraft.size : state.users.filter((u) => u.role === "Creative" && u.active && u.editor).length) : k === optKey ? optDraft.length : optionsFor(k).length}</b></button>`).join("")}</nav>`;
+
+/** Editor: centang akun Creative yang muncul di dropdown Editor. */
+function renderEditors() {
+  const [title, desc] = GROUPS.editor;
+  const people = state.users.filter((u) => u.role === "Creative").sort((a, b) => (b.active - a.active) || a.name.localeCompare(b.name));
+  body(`<div class="opt-shell">${groupNav()}
+    <section class="panel opt-panel">
+      <header class="opt-head"><div><h2>${title}</h2><p>${desc}</p></div></header>
+      <div class="opt-list">
+        <div class="opt-row opt-row-head editor-row"><span>Tampil</span><span>Nama</span><span>Posisi</span></div>
+        ${people.map((u) => `<label class="opt-row editor-row ${u.active ? "" : "is-off"}">
+          <span><input type="checkbox" data-onchange="editor-pick" value="${u.id}" ${editorDraft.has(u.id) ? "checked" : ""} ${u.active ? "" : "disabled"}></span>
+          <span><b>${esc(u.name)}</b> <span class="small">${esc(u.username)}</span></span>
+          <span class="small">${esc(u.position)} Creative${u.active ? "" : " · nonaktif"}</span></label>`).join("") || '<p class="empty">Belum ada akun Creative.</p>'}
+      </div>
+      <footer class="opt-foot"><span class="small">${optDirty ? "● Ada perubahan yang belum disimpan" : `${editorDraft.size} editor`}</span>
+        <div class="opt-foot-actions"><button class="btn" data-action="settings-section" data-section="users">Kelola akun</button><button class="btn primary" data-action="editor-save">Simpan perubahan</button></div></footer>
+    </section></div>`);
+}
+
 function renderOptions() {
   const withCategory = HAS_CATEGORY.has(optKey);
   const names = optDraft.map((o) => o.label.trim()).filter(Boolean);
   const [title, desc] = GROUPS[optKey];
-  const count = (k) => (k === optKey ? optDraft.length : optionsFor(k).length);
-  body(`<div class="opt-shell">
-    <nav class="opt-groups" aria-label="Kolom dropdown">${Object.entries(GROUPS).map(([k, [n]]) => `<button class="${k === optKey ? "active" : ""}" data-action="opt-tab" data-key="${k}"><span>${n}</span><b>${count(k)}</b></button>`).join("")}</nav>
+  body(`<div class="opt-shell">${groupNav()}
     <section class="panel opt-panel">
       <header class="opt-head"><div><h2>${title}</h2><p>${desc}</p></div></header>
       <div class="opt-list ${withCategory ? "with-cat" : ""}">
@@ -89,7 +115,7 @@ function renderOptions() {
           return `<div class="opt-row">
           <div class="opt-order"><button type="button" class="icon-act" data-action="opt-move" data-index="${i}" data-dir="-1" ${i === 0 ? "disabled" : ""} aria-label="Naikkan ${esc(o.label)}">↑</button><button type="button" class="icon-act" data-action="opt-move" data-index="${i}" data-dir="1" ${i === optDraft.length - 1 ? "disabled" : ""} aria-label="Turunkan ${esc(o.label)}">↓</button></div>
           <input aria-label="Nama pilihan ${i + 1}" data-opt-label="${i}" data-onchange="opt-rename" value="${esc(o.label)}" maxlength="60">
-          ${withCategory ? `<div class="opt-cat"><select aria-label="Kategori ${esc(o.label)}" data-opt-cat="${i}" data-onchange="opt-recat">${names.map((n) => `<option value="${esc(n)}" ${n === o.category ? "selected" : ""}>${esc(n)}</option>`).join("")}</select><span class="opt-sem sem-${esc(sem || "none").replace(/\s/g, "")}" title="Arti proses">${esc(SEM_LABEL[sem] ?? sem)}</span></div>` : ""}
+          ${withCategory ? `<div class="opt-cat"><select aria-label="Kategori ${esc(o.label)}" data-opt-cat="${i}" data-prev="${esc(o.category)}" data-onchange="opt-recat">${names.map((n) => `<option value="${esc(n)}" ${n === o.category ? "selected" : ""}>${esc(n)}</option>`).join("")}</select><span class="opt-sem sem-${esc(sem || "none").replace(/\s/g, "")}" title="Arti proses">${esc(SEM_LABEL[sem] ?? sem)}</span></div>` : ""}
           <button type="button" class="icon-act danger" data-action="opt-remove" data-index="${i}" aria-label="Hapus ${esc(o.label)}">${icon("trash", 16)}</button></div>`;
         }).join("")}
       </div>
@@ -105,7 +131,12 @@ document.addEventListener("input", (e) => {
   if (note) note.textContent = "● Ada perubahan yang belum disimpan";
 });
 function captureOptions() {
-  document.querySelectorAll("[data-opt-cat]").forEach((el) => (optDraft[Number(el.dataset.optCat)].category = el.value));
+  // Kategori hanya diambil dari dropdown yang benar-benar diubah pengguna; selebihnya mengikuti data
+  // (agar ganti nama pilihan tidak tertimpa nilai lama di dropdown yang belum dirender ulang).
+  document.querySelectorAll("[data-opt-cat]").forEach((el) => {
+    if (el.value !== el.dataset.prev) optDraft[Number(el.dataset.optCat)].category = el.value;
+    el.dataset.prev = el.value;
+  });
   document.querySelectorAll("[data-opt-label]").forEach((el) => {
     const item = optDraft[Number(el.dataset.optLabel)];
     const next = el.value.trim();
@@ -181,8 +212,18 @@ delegate(document.body, "click", {
     section = el.dataset.section;
     window.dispatchEvent(new Event("cs:changed"));
   },
+  "editor-save": async () => {
+    try {
+      state.users = await api("PUT", "/api/editors", { ids: [...editorDraft] });
+      toast("Daftar editor diperbarui");
+      showOptions("editor");
+      window.dispatchEvent(new Event("cs:changed"));
+    } catch (e) {
+      toast(errorText(e), { error: true });
+    }
+  },
   "opt-tab": (el) => {
-    captureOptions();
+    if (optKey !== "editor") captureOptions();
     if (optDirty && !confirm("Perubahan dropdown ini belum disimpan. Pindah dan buang perubahan?")) return;
     showOptions(el.dataset.key);
   },
@@ -237,6 +278,12 @@ delegate(document.body, "click", {
 delegate(document.body, "change", {
   "new-user-scope": () => newUserApps(),
   // Render ulang ditunda: "change" dipicu saat kolom ditinggalkan (blur), tepat ketika tombol lain diklik.
+  "editor-pick": (el) => {
+    if (el.checked) editorDraft.add(Number(el.value));
+    else editorDraft.delete(Number(el.value));
+    optDirty = true;
+    document.querySelector(".opt-foot .small").textContent = "● Ada perubahan yang belum disimpan";
+  },
   "opt-rename": () => {
     captureOptions();
     optDirty = true;

@@ -153,3 +153,43 @@ test("audit 2: ganti jenis ke nomor yang sudah dipakai, skrip lama tanpa type/me
   assert.equal((await lm.call("PUT", "/api/options/app", { options: [null] })).status, 422);
   assert.equal((await lm.call("DELETE", `/api/contents/${x.id}/publish`, {})).status, 409);
 });
+
+test("jenis skrip & editor bisa diatur: nama bebas, aturan ikut kategori; editor dipilih Leader", async () => {
+  const lm = await login("lm");
+  const mk = await login("nadia");
+  const lc = await login("lc");
+  const dimas = await login("dimas");
+  const prio = (await db.query("select * from options where key = 'priority' and archived = 0 order by sort"));
+  assert.deepEqual(prio.map((o) => o.semantic), ["Reguler", "Trend", "Urgent"]);
+  // Ganti nama "Trend" → "Viral" dan tambah "Mendadak" berkategori Urgent.
+  const options = prio.map((o) => ({ id: o.id, label: o.label === "Trend" ? "Viral" : o.label, category: o.label === "Trend" ? "Viral" : o.label }));
+  options.push({ label: "Mendadak", category: "Urgent" });
+  const r = await lm.call("PUT", "/api/options/priority", { options });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const mendadak = r.data.find((o) => o.key === "priority" && o.label === "Mendadak");
+  assert.equal(mendadak.semantic, "Urgent");
+  // Konten dengan "Mendadak" tidak pernah telat (sama seperti Urgent); nama lama "Trend" tetap diterima sebagai arti.
+  const c = (await mk.call("POST", "/api/contents", { type: "Carousel", app: apps()[0], created_date: "2026-10-01", upload_date: "2026-10-10", priority: mendadak.id, sheet: sheet("Carousel", "Mendadak") })).data;
+  assert.equal(c.priority, mendadak.id);
+  assert.deepEqual([c.flags.lateScript, c.flags.lateEdit], [false, false]);
+  const t = (await mk.call("POST", "/api/contents", { type: "Carousel", app: apps()[0], priority: "Trend", sheet: sheet("Carousel", "Trend lama") })).data;
+  assert.equal(t.priority, prio.find((o) => o.semantic === "Trend").id);
+  // Editor: Leader memilih siapa yang muncul; yang tidak dipilih tidak bisa ditugaskan.
+  assert.equal((await mk.call("PUT", "/api/editors", { ids: [] })).status, 403);
+  const list = (await lm.call("PUT", "/api/editors", { ids: [lc.id] })).data;
+  assert.equal(list.find((u) => u.id === lc.id).editor, 1);
+  assert.equal(list.find((u) => u.id === dimas.id).editor, 0);
+  assert.equal((await mk.call("PATCH", `/api/contents/${c.id}`, { revision: c.revision, changes: { creative_user_id: dimas.id } })).status, 422);
+  assert.equal((await mk.call("PATCH", `/api/contents/${c.id}`, { revision: c.revision, changes: { creative_user_id: lc.id } })).status, 200);
+  await lm.call("PUT", "/api/editors", { ids: [lc.id, dimas.id] });
+});
+
+test("migrasi: jenis skrip lama berupa teks diubah ke id pilihan", async () => {
+  const mk = await login("nadia");
+  const c = (await mk.call("POST", "/api/contents", { type: "Video", app: apps()[0], sheet: sheet("Video", "Lama trend") })).data;
+  await db.run("update contents set priority = 'Urgent' where id = ?", [c.id]);
+  await migrate(db);
+  const row = await db.one("select c.priority, o.semantic from contents c join options o on o.id = c.priority where c.id = ?", [c.id]);
+  assert.equal(row.semantic, "Urgent");
+  assert.ok(row.priority.startsWith("priority:"));
+});

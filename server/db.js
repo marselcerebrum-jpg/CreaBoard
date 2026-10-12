@@ -28,7 +28,7 @@ create table if not exists sessions (
 -- "label" bebas. Pilihan yang dihapus diarsipkan agar konten lama tetap terbaca.
 create table if not exists options (
   id       text primary key,
-  key      text not null check (key in ('app','talentName','script','talent','creative','qc')),
+  key      text not null check (key in ('app','talentName','script','talent','creative','qc','priority')),
   label    text not null,
   semantic text not null default '',
   sort     integer not null default 0,
@@ -139,6 +139,11 @@ create table if not exists kpis (
 alter table contents add column if not exists type_no integer;
 -- Jenis skrip: Reguler (tenggat normal) atau Trend/Urgent (tenggat H-0).
 alter table contents add column if not exists priority text not null default 'Reguler';
+-- Jenis skrip menjadi pilihan dropdown (key 'priority'); kolom options.key diperluas.
+alter table options drop constraint if exists options_key_check;
+alter table options add constraint options_key_check check (key in ('app','talentName','script','talent','creative','qc','priority'));
+-- Akun Creative yang muncul di dropdown Editor (diatur Leader di Setting → Atur dropdown).
+alter table users add column if not exists editor integer;
 `;
 
 // Kategori proses tetap; label dapat diganti Leader di Setting.
@@ -150,6 +155,7 @@ const DEFAULT_OPTIONS = {
   talent: [["Belum take", "Belum"], ["Done", "Done"], ["Tidak perlu", "Tidak perlu"]],
   creative: [["Belum diedit", "Belum"], ["Done", "Done"]],
   qc: [["Belum QC", ""], ["Done", "Done"], ["Revisi", "Revisi"]],
+  priority: [["Reguler", "Reguler"], ["Trend", "Trend"], ["Urgent", "Urgent"]],
 };
 
 const toPositional = (sql) => {
@@ -224,9 +230,21 @@ export async function migrate(db) {
       from (select id, type, row_number() over (partition by type, type_no order by id) dup from contents) d where dup > 1) r
     where r.id = c.id`);
   await db.exec("create unique index if not exists contents_type_no_uq on contents(type, type_no)");
-  const { n } = await db.one("select count(*)::int n from options");
+  // Jenis skrip sebagai pilihan dropdown: isi bawaan, lalu konten lama ("Reguler"/"Trend"/"Urgent") dipindah ke id pilihan.
+  if (!(await db.one("select 1 from options where key = 'priority' limit 1"))) {
+    for (const [i, [label, semantic]] of DEFAULT_OPTIONS.priority.entries()) {
+      await db.run("insert into options (id, key, label, semantic, sort, category) values (?, ?, ?, ?, ?, ?) on conflict (id) do nothing", [`priority:${i + 1}`, "priority", label, semantic, i, label]);
+    }
+  }
+  await db.run(`update contents c set priority = o.id from options o
+    where o.key = 'priority' and o.semantic = c.priority and c.priority not like 'priority:%'
+      and o.id = (select id from options x where x.key = 'priority' and x.semantic = c.priority order by archived, sort limit 1)`);
+  // Editor: staff Creative aktif tampil di dropdown Editor kecuali diatur lain.
+  // (editor kosong = bawaan: staff Creative tampil sebagai editor; lihat kueri users di app.js)
+  const { n } = await db.one("select count(*)::int n from options where key <> 'priority'");
   if (n === 0) {
     for (const [key, list] of Object.entries(DEFAULT_OPTIONS)) {
+      if (key === "priority") continue;
       for (const [i, [label, semantic]] of list.entries()) {
         await db.run("insert into options (id, key, label, semantic, sort, category) values (?, ?, ?, ?, ?, ?)", [`${key}:${i + 1}`, key, label, semantic, i, label]);
       }

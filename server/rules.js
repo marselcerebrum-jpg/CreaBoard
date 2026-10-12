@@ -13,7 +13,10 @@ export const SEMANTICS = {
 export const DEADLINE_DAYS = { Marketing: 3, Creative: 1 };
 export const MAX_ROWS = { Video: 12, Carousel: 10, Singlepost: 2 };
 // Jenis skrip. Trend & Urgent dibuat mendekati tanggal upload, jadi tenggatnya H-0 (hari upload).
+// Kategori proses jenis skrip. Nama pilihannya bebas (Setting → Atur dropdown → Jenis skrip).
 export const PRIORITIES = ["Reguler", "Trend", "Urgent"];
+/** Arti proses jenis skrip: id pilihan → semantic; nilai lama berupa teks tetap dikenali. */
+export const prioritySem = (opts, p) => opts?.sem(p) || (PRIORITIES.includes(p) ? p : "Reguler");
 export const deadlineDays = (role, priority) => (priority === "Trend" || priority === "Urgent" ? 0 : DEADLINE_DAYS[role]);
 /** Skrip Trend & Urgent sifatnya mendadak: tidak pernah dihitung telat. */
 export const neverLate = (priority) => priority === "Trend" || priority === "Urgent";
@@ -227,7 +230,7 @@ export function applyWorkflow(prev, next, opts, now) {
     if (next.talent_name && opts.byId.get(next.talent_name)?.key !== "talentName") errors.push("Nama talent tidak valid");
   }
   if (!opts.byId.get(next.app) || opts.byId.get(next.app).key !== "app") errors.push("Apps tidak valid");
-  for (const f of ["app", "script_status", "talent_status", "talent_name", "creative_status", "qc_status"]) {
+  for (const f of ["app", "script_status", "talent_status", "talent_name", "creative_status", "qc_status", "priority"]) {
     if (next[f] && next[f] !== prev[f] && opts.byId.get(next[f])?.archived) errors.push(`Pilihan "${opts.byId.get(next[f]).label}" sudah dihapus dari dropdown`);
   }
   if (!isDate(next.created_date) || !isDate(next.upload_date)) errors.push("Tanggal tidak valid");
@@ -267,8 +270,13 @@ export function applyWorkflow(prev, next, opts, now) {
     fail(422, "Take talent hanya bisa Done setelah skrip ready.");
   }
 
-  if (!PRIORITIES.includes(next.priority ?? "Reguler")) fail(422, "Jenis skrip tidak valid");
-  next.priority = next.priority ?? "Reguler";
+  // Jenis skrip: id pilihan; nama/arti ("Trend") juga diterima lalu diubah ke id pilihannya.
+  const raw = next.priority ?? null;
+  const prio = raw == null ? null
+    : opts.byId.get(raw)?.key === "priority" ? raw
+    : (opts.rows.find((o) => o.key === "priority" && !o.archived && (o.label === raw || o.semantic === raw)) ?? opts.rows.find((o) => o.key === "priority" && (o.label === raw || o.semantic === raw)))?.id;
+  if (raw != null && !prio) fail(422, "Jenis skrip tidak valid");
+  next.priority = prio ?? opts.firstWith("priority", "Reguler") ?? "Reguler";
 
   // Creative
   const link = (next.link ?? "").trim();
@@ -327,6 +335,7 @@ export function contentFlags(c, opts, today) {
   const qc = opts.sem(c.qc_status);
   const pub = Boolean(c.published_date);
   const ready = s === "Ready";
+  const prio = prioritySem(opts, c.priority);
   const talentOk = ["Done", "Tidak perlu"].includes(t);
   return {
     script: ready && cr !== "Done" && !pub,
@@ -335,8 +344,8 @@ export function contentFlags(c, opts, today) {
     qc: cr === "Done" && qc === "" && !pub,
     revision: qc === "Revisi" && !pub,
     upload: qc === "Done" && !pub,
-    lateScript: !pub && !neverLate(c.priority) && !ready && c.upload_date >= today && today > addDays(c.upload_date, -deadlineDays("Marketing", c.priority)),
-    lateEdit: !pub && !neverLate(c.priority) && cr !== "Done" && c.upload_date >= today && today > addDays(c.upload_date, -deadlineDays("Creative", c.priority)),
+    lateScript: !pub && !neverLate(prio) && !ready && c.upload_date >= today && today > addDays(c.upload_date, -deadlineDays("Marketing", prio)),
+    lateEdit: !pub && !neverLate(prio) && cr !== "Done" && c.upload_date >= today && today > addDays(c.upload_date, -deadlineDays("Creative", prio)),
     missed: c.upload_date < today && !pub,
     published: pub,
   };
@@ -360,11 +369,12 @@ export async function performance(db, opts, users, month, today, viewer) {
     const targets = kpis.filter((k) => k.user_id === u.id);
     const items = rows.map((c) => {
       const done = c[doneAt] && stampDay(c[doneAt]) <= today ? stampDay(c[doneAt]) : null;
-      const deadline = addDays(c.upload_date, -deadlineDays(u.role, c.priority));
-      const trend = neverLate(c.priority);
+      const prio = prioritySem(opts, c.priority);
+      const deadline = addDays(c.upload_date, -deadlineDays(u.role, prio));
+      const trend = neverLate(prio);
       const status = done
         ? trend || done <= deadline ? "Tepat waktu" : "Selesai terlambat"
-        : trend ? `${c.priority} · tidak dihitung telat` : today > deadline ? "Terlambat" : today === deadline ? "Jatuh tempo hari ini" : "Dalam tenggat";
+        : trend ? `${opts.byId.get(c.priority)?.label ?? prio} · tidak dihitung telat` : today > deadline ? "Terlambat" : today === deadline ? "Jatuh tempo hari ini" : "Dalam tenggat";
       return { id: c.id, type_no: c.type_no, title: c.title, type: c.type, priority: c.priority, upload_date: c.upload_date, deadline, done, status };
     });
     const doneItems = items.filter((i) => i.done);

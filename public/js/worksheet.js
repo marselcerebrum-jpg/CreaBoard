@@ -1,7 +1,7 @@
 // Dashboard dan worksheet produksi (tabel dengan dropdown per sel; kartu di ponsel).
 import {
   api, ApiError, contentNo, optionsFor, delegate, errorText, esc, fmtDate, fmtStamp, icon, isLeader, leads, myApps, optionTags, optLabel, reloadContents, searchText, sem,
-  state, toast, TYPES, typeLabel, usersByRole, userName,
+  state, toast, TYPES, typeLabel, usersByRole, userName, editors, prioSem,
 } from "./core.js";
 
 const filters = { app: "", type: "", from: "", to: "", search: "", editor: "" };
@@ -44,7 +44,7 @@ function scoped(c, { useDates = true } = {}) {
 }
 
 /** Skrip Urgent yang belum tayang selalu tampil paling atas. */
-const urgentFirst = (c) => (c.priority === "Urgent" && !c.flags.published ? 1 : 0);
+const urgentFirst = (c) => (prioSem(c.priority) === "Urgent" && !c.flags.published ? 1 : 0);
 
 function visibleRows() {
   const q = filters.search.trim().toLowerCase();
@@ -59,7 +59,7 @@ function filterBar({ withEditor, withType = true }) {
   return `<div class="filters">
     <div class="field"><label for="fApp">Apps</label><select id="fApp" data-onchange="filter" data-key="app">${optionTags("app", filters.app, { blank: myApps().length ? "Semua apps saya" : "Semua apps", mine: true })}</select></div>
     ${withType ? `<div class="field"><label for="fType">Jenis konten</label><select id="fType" data-onchange="filter" data-key="type"><option value="">Semua</option>${TYPES.map((t) => `<option value="${t}" ${filters.type === t ? "selected" : ""}>${typeLabel(t)}</option>`).join("")}</select></div>` : ""}
-    ${withEditor ? `<div class="field"><label for="fEditor">Editor</label><select id="fEditor" data-onchange="filter" data-key="editor"><option value="">Semua editor</option>${usersByRole("Creative").map((u) => `<option value="${u.id}" ${filters.editor === String(u.id) ? "selected" : ""}>${esc(u.name)}</option>`).join("")}</select></div>` : ""}
+    ${withEditor ? `<div class="field"><label for="fEditor">Editor</label><select id="fEditor" data-onchange="filter" data-key="editor"><option value="">Semua editor</option>${editors().map((u) => `<option value="${u.id}" ${filters.editor === String(u.id) ? "selected" : ""}>${esc(u.name)}</option>`).join("")}</select></div>` : ""}
     <div class="field"><label for="fFrom">Tanggal upload mulai</label><input id="fFrom" type="date" value="${filters.from}" data-onchange="filter" data-key="from"></div>
     <div class="field"><label for="fTo">Tanggal upload sampai</label><input id="fTo" type="date" value="${filters.to}" data-onchange="filter" data-key="to"></div>
     <div class="filter-actions"><button class="btn" data-action="filter-today">Hari ini</button><button class="btn" data-action="filter-reset">Reset</button></div>
@@ -92,7 +92,7 @@ function select(c, field, key, blank) {
   return `<select class="${cls}" aria-label="${esc(FIELD_NAME[field])} #${c.id}" data-onchange="cell" data-id="${c.id}" data-field="${field}" ${can(c, field) ? "" : "disabled"}>${optionTags(key, c[field], blank === undefined ? {} : { blank })}</select>${cellError(c, field)}`;
 }
 function editorSelect(c) {
-  const list = usersByRole("Creative");
+  const list = editors();
   const current = c.creative_user_id;
   const options = list.map((u) => `<option value="${u.id}" ${u.id === current ? "selected" : ""}>${esc(u.name)}</option>`).join("");
   const missing = current && !list.some((u) => u.id === current) ? `<option value="${current}" selected>${esc(userName(current) || "Nonaktif")}</option>` : "";
@@ -105,9 +105,8 @@ const CELLS = {
   priority: {
     head: "Jenis skrip",
     html: (c) => {
-      const p = c.priority ?? "Reguler";
-      return `<select class="cell-select prio-${p}" aria-label="Jenis skrip #${c.id}" data-onchange="cell" data-id="${c.id}" data-field="priority" ${can(c, "priority") ? "" : "disabled"}>
-        ${["Reguler", "Trend", "Urgent"].map((x) => `<option ${x === p ? "selected" : ""}>${x}</option>`).join("")}</select>${cellError(c, "priority")}`;
+      return `<select class="cell-select prio-${prioSem(c.priority)}" aria-label="Jenis skrip #${c.id}" data-onchange="cell" data-id="${c.id}" data-field="priority" ${can(c, "priority") ? "" : "disabled"}>
+        ${optionTags("priority", c.priority)}</select>${cellError(c, "priority")}`;
     },
   },
   script: { head: "Status skrip", html: (c) => select(c, "script_status", "script") + stamp(c.script_ready_at) },
@@ -161,7 +160,7 @@ const TYPE_ICON = { Video: "edit", Carousel: "layers", Singlepost: "image" };
 const contentCell = (c) => `<div class="k-cell"><span class="k-tile k-${c.type}">${icon(TYPE_ICON[c.type], 18)}</span><div>${titleCell(c)}</div></div>`;
 
 function titleCell(c) {
-  const prio = c.priority && c.priority !== "Reguler" ? ` <span class="badge b-prio">${esc(c.priority)}</span>` : "";
+  const prio = prioSem(c.priority) !== "Reguler" ? ` <span class="badge b-prio">${esc(optLabel(c.priority) || c.priority)}</span>` : "";
   return `<div class="t-title">${esc(c.title)}${prio}</div><div class="t-meta">${esc(optLabel(c.app))} · ${typeLabel(c.type)} · dibuat ${fmtDate(c.created_date)}</div>`;
 }
 
@@ -368,7 +367,7 @@ const noOf = (id) => {
 function describe(field, value) {
   if (field === "creative_user_id") return userName(value) || "Belum ditentukan";
   if (field === "link" || field === "notes") return "";
-  if (field === "priority") return value;
+  if (field === "priority") return optLabel(value) || value;
   return optLabel(value) || "kosong";
 }
 
