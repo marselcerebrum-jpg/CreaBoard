@@ -114,9 +114,9 @@ export function editableFields(user, c, opts) {
 
 // ───────────── skrip (sheet) ─────────────
 /** Ganti hanya kolom FOOTAGE: { metaFootage: [4 teks] (Video), rows: [teks per baris] }. */
-export function mergeFootage(sheet, footage) {
+export function mergeFootage(sheet, footage, type = sheet?.type) {
   if (!sheet || !footage || typeof footage !== "object") return sheet;
-  const next = normalizeSheet(sheet.type, sheet); // sheet lama bisa tanpa metaFootage/rows
+  const next = normalizeSheet(type, sheet); // sheet lama bisa tanpa type/metaFootage/rows
   if (Array.isArray(footage.metaFootage)) next.metaFootage = next.metaFootage.map((v, i) => (typeof footage.metaFootage[i] === "string" ? footage.metaFootage[i].slice(0, 20000) : v));
   if (Array.isArray(footage.rows)) next.rows = next.rows.map((r, i) => (typeof footage.rows[i] === "string" ? { ...r, footage: footage.rows[i].slice(0, 20000) } : r));
   return next;
@@ -248,8 +248,9 @@ export function applyWorkflow(prev, next, opts, now) {
   }
   if (prev.type !== next.type && was.script === "Ready") fail(409, "Bentuk konten hanya bisa diubah saat skrip masih Draft.");
 
-  // Skrip
-  if (is.script === "Ready") {
+  // Skrip: syarat lengkap dicek saat baru ditandai Ready atau isi skripnya berubah
+  // (edit footage/dropdown pada skrip lama yang sudah Ready tidak diblokir).
+  if (is.script === "Ready" && (was.script !== "Ready" || sheetChanged)) {
     const missing = scriptReadyErrors(next);
     if (missing.length) fail(422, "Skrip belum lengkap untuk ditandai ready", missing);
   }
@@ -343,8 +344,9 @@ export function contentFlags(c, opts, today) {
 
 // ───────────── performa & KPI ─────────────
 export async function performance(db, opts, users, month, today, viewer) {
-  const contents = await db.query("select * from contents where archived = 0 and substr(upload_date,1,7) = ?", [month]);
-  const kpis = await db.query("select * from kpis where substr(upload_date,1,7) = ?", [month]);
+  const [from, to] = [`${month}-01`, `${month}-31`];
+  const contents = await db.query("select * from contents where archived = 0 and upload_date between ? and ?", [from, to]);
+  const kpis = await db.query("select * from kpis where upload_date between ? and ?", [from, to]);
   const staff = users.filter((u) => u.position === "Staff" && u.active && (u.role === "Marketing" || u.role === "Creative"));
   // Leader melihat staff timnya sendiri (Leader Marketing → staff Marketing, Leader Creative → staff Creative).
   const visible = staff.filter((u) => (isLeader(viewer) ? u.role === viewer.role : u.id === viewer.id));

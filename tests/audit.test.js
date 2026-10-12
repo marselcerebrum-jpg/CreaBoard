@@ -117,3 +117,39 @@ test("validasi input: tanggal mustahil, bulan salah, cookie rusak, body null, pi
   assert.equal(k.status, 200, JSON.stringify(k.data));
   assert.equal((await lm.call("PATCH", `/api/users/${mk.id}`, { role: "Creative" })).status, 409);
 });
+
+test("audit 2: ganti jenis ke nomor yang sudah dipakai, skrip lama tanpa type/meta, id pengguna & opsi tidak valid", async () => {
+  const mk = await login("nadia");
+  const dimas = await login("dimas");
+  const lm = await login("lm");
+  const opt = (key, semantic) => O.find((o) => o.key === key && o.semantic === semantic).id;
+  // Nomor tujuan sudah dipakai: tidak boleh 500.
+  const v = (await mk.call("POST", "/api/contents", { type: "Video", app: apps()[0], sheet: sheet("Video", "Video satu") })).data;
+  const maxCar = (await db.one("select coalesce(max(type_no),0)::int n from contents where type = 'Carousel'")).n;
+  await db.run("update contents set type_no = ? where id = ?", [maxCar + 50, v.id]);
+  await mk.call("POST", "/api/contents", { type: "Carousel", app: apps()[0], sheet: sheet("Carousel", "Carousel x") });
+  const cur = (await mk.call("GET", `/api/contents/${v.id}`)).data;
+  await db.run("update contents set type_no = (select max(type_no) from contents where type = 'Carousel') where id = ?", [v.id]);
+  const fresh = (await mk.call("GET", `/api/contents/${v.id}`)).data;
+  const r = await mk.call("PATCH", `/api/contents/${v.id}`, { revision: fresh.revision, changes: { type: "Carousel", sheet: sheet("Carousel", "Jadi carousel") } });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.ok(cur);
+  // Skrip lama: sheet tanpa type/title, Creative Done → edit footage tetap boleh.
+  let c = (await mk.call("POST", "/api/contents", { type: "Carousel", app: apps()[0], creative_user_id: dimas.id, sheet: sheet("Carousel", "Lama") })).data;
+  c = (await mk.call("PATCH", `/api/contents/${c.id}`, { revision: c.revision, changes: { script_status: opt("script", "Ready") } })).data;
+  c = (await dimas.call("PATCH", `/api/contents/${c.id}`, { revision: c.revision, changes: { link: "https://drive.google.com/h", creative_status: opt("creative", "Done") } })).data;
+  await db.run("update contents set sheet = ? where id = ?", [JSON.stringify({ meta: ["Lama"], rows: [{ label: "Slide utama", text: "s" }, { label: "Slide 2", text: "x" }, { label: "CTA", text: "c" }] }), c.id]);
+  c = (await dimas.call("GET", `/api/contents/${c.id}`)).data;
+  const f = await dimas.call("PATCH", `/api/contents/${c.id}`, { revision: c.revision, changes: { footage: { rows: ["https://drive.google.com/a", "", ""] } } });
+  assert.equal(f.status, 200, JSON.stringify(f.data));
+  assert.equal(f.data.sheet.rows.length, 3, "baris tidak hilang");
+  // Sheet rusak/kosong tidak membuat daftar konten error.
+  await db.run("update contents set sheet = '{}' where id = ?", [c.id]);
+  assert.equal((await mk.call("GET", "/api/contents")).status, 200);
+  // Id pengguna tidak valid → 422, bukan 500.
+  const x = (await mk.call("GET", "/api/contents")).data.find((k) => k.type === "Video" && k.editable.includes("creative_user_id"));
+  assert.equal((await mk.call("PATCH", `/api/contents/${x.id}`, { revision: x.revision, changes: { creative_user_id: "abc" } })).status, 422);
+  // Opsi dengan item null → 422; batal tayang konten yang belum tayang → 409.
+  assert.equal((await lm.call("PUT", "/api/options/app", { options: [null] })).status, 422);
+  assert.equal((await lm.call("DELETE", `/api/contents/${x.id}/publish`, {})).status, 409);
+});

@@ -449,6 +449,7 @@ delegate(document.body, "click", {
     changed();
   },
   "cal-open": (el) => {
+    planMode = "calendar"; // "Lihat detail/tanggal" selalu membuka kalender aplikasi itu
     planApp = el.dataset.app;
     if (el.dataset.type) planType = el.dataset.type;
     view = "plan";

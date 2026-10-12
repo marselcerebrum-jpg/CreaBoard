@@ -23,6 +23,7 @@ const SECURITY_HEADERS = {
   "X-Frame-Options": "DENY",
 };
 const SENT = Symbol("response-sent");
+const PUBLISHED_LOCK = ["sheet", "type", "script_status", "talent_status", "creative_status", "qc_status", "link", "app", "priority", "upload_date", "created_date"];
 const CONTENT_COLS = ["title", "app", "type", "created_date", "upload_date", "script_status", "talent_status", "talent_name",
   "creative_status", "qc_status", "link", "notes", "marketing_user_id", "creative_user_id", "script_ready_at",
   "talent_done_at", "creative_done_at", "link_at", "qc_at", "priority"];
@@ -41,8 +42,8 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
 
   // ───────────── pembaruan otomatis (Server-Sent Events) ─────────────
   const streams = new Set();
-  const broadcast = (what) => {
-    for (const res of streams) res.write(`data: ${JSON.stringify({ what, at: Date.now() })}\n\n`);
+  const broadcast = (what, id = null) => {
+    for (const res of streams) res.write(`data: ${JSON.stringify({ what, id, at: Date.now() })}\n\n`);
   };
   // Ping berkala sekaligus menutup stream yang sesinya sudah berakhir (logout / akun dinonaktifkan).
   setInterval(async () => {
@@ -69,7 +70,16 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
     if (!user.apps.length) fail(422, "Anda belum memegang apps. Minta Leader Marketing membagikan apps.");
     if (!user.apps.includes(app)) fail(422, "Apps ini tidak termasuk apps yang Anda pegang");
   };
-  const parseContent = (c) => (c ? { ...c, sheet: JSON.parse(c.sheet || "{}") } : null);
+  const parseContent = (c) => {
+    if (!c) return null;
+    let raw;
+    try {
+      raw = JSON.parse(c.sheet || "{}");
+    } catch {
+      raw = {};
+    }
+    return { ...c, sheet: normalizeSheet(c.type, raw) };
+  };
   const loadContent = async (q, id, { lock = false } = {}) =>
     parseContent(await q.one(`select * from contents where id = ? and archived = 0${lock ? " for update" : ""}`, [Number(id)]));
   const visibleContent = async (q, user, id, opts, lock = false) => {
@@ -82,7 +92,8 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
     ...c,
     flags: contentFlags(c, opts, today()),
     canDelete: canDeleteContent(user, c, opts),
-    editable: editableFields(user, c, opts),
+    // Konten yang sudah tayang terkunci: kolom skrip/status tidak ditawarkan (footage & catatan tetap boleh).
+    editable: c.published_date ? editableFields(user, c, opts).filter((f) => !PUBLISHED_LOCK.includes(f)) : editableFields(user, c, opts),
     readyErrors: scriptReadyErrors(c),
   });
   const requireLeader = (user) => !isLeader(user) && fail(403, "Hanya Leader yang dapat melakukan ini");
@@ -219,27 +230,30 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
       const { footage, ...rest } = changes;
       const next = { ...prev, ...rest };
       if ("sheet" in changes || "type" in changes) next.sheet = normalizeSheet(next.type, changes.sheet ?? prev.sheet);
-      if (footage) next.sheet = mergeFootage(next.sheet, footage);
+      if (footage) next.sheet = mergeFootage(next.sheet, footage, next.type);
       if (!TYPES.includes(next.type)) fail(422, "Bentuk konten tidak valid");
       if ("app" in changes && changes.app !== prev.app) checkAppAllowed(user, changes.app);
       next.title = titleFromSheet(next.sheet, prev.title);
       next.notes = String(next.notes ?? "").slice(0, 5000);
-      for (const k of ["creative_user_id", "marketing_user_id"]) next[k] = next[k] === "" || next[k] == null ? null : Number(next[k]);
+      for (const k of ["creative_user_id", "marketing_user_id"]) {
+        next[k] = next[k] === "" || next[k] == null ? null : Number(next[k]);
+        if (next[k] !== null && !Number.isSafeInteger(next[k])) fail(422, "Pengguna tidak valid");
+      }
       if ("creative_user_id" in changes && !(await userExists(q, next.creative_user_id, "Creative"))) fail(422, "Editor tidak valid");
       if ("marketing_user_id" in changes && !(await userExists(q, next.marketing_user_id, "Marketing"))) fail(422, "Pemilik Marketing tidak valid");
       if (next.talent_name === "") next.talent_name = null;
       applyWorkflow(prev, next, opts, nowIso());
 
-      await q.run(
-        `update contents set ${CONTENT_COLS.map((c) => `${c} = ?`).join(", ")}, sheet = ?, revision = revision + 1, updated_at = ? where id = ?`,
-        [...CONTENT_COLS.map((c) => next[c] ?? null), JSON.stringify(next.sheet), nowIso(), prev.id],
-      );
+      // Nomor per jenis: pindah jenis = nomor baru di jenis tujuan (dihitung sebelum update agar indeks unik tidak bentrok).
+      let typeNo = prev.type_no;
       if (next.type !== prev.type) {
-        // Nomor per jenis: pindah jenis = nomor baru di jenis tujuan.
         await q.query("select pg_advisory_xact_lock(hashtext(?))", [`creaboard:type_no:${next.type}`]);
-        const { n } = await q.one("select coalesce(max(type_no), 0)::int + 1 n from contents where type = ?", [next.type]);
-        await q.run("update contents set type_no = ? where id = ?", [n, prev.id]);
+        typeNo = (await q.one("select coalesce(max(type_no), 0)::int + 1 n from contents where type = ?", [next.type])).n;
       }
+      await q.run(
+        `update contents set ${CONTENT_COLS.map((c) => `${c} = ?`).join(", ")}, sheet = ?, type_no = ?, revision = revision + 1, updated_at = ? where id = ?`,
+        [...CONTENT_COLS.map((c) => next[c] ?? null), JSON.stringify(next.sheet), typeNo, nowIso(), prev.id],
+      );
       if (next.type !== prev.type || next.app !== prev.app) await q.run("update footage set app = ?, type = ? where content_id = ?", [next.app, next.type, prev.id]);
       const sheetChanged = JSON.stringify(prev.sheet) !== JSON.stringify(next.sheet);
       await logEvents(q, prev.id, user.id, prev, next, [...CONTENT_COLS.filter((c) => !c.endsWith("_at") && c !== "title"), ...(sheetChanged ? ["sheet"] : [])]);
@@ -269,19 +283,22 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
   route("DELETE", "/api/contents/:id/publish", async ({ user, params }) => {
     requireLeads(user, "Marketing");
     const opts = await optionIndex(db);
-    const c = await visibleContent(db, user, params.id, opts);
-    await db.run("update contents set published_url = null, published_date = null, published_by = null, revision = revision + 1 where id = ?", [c.id]);
-    await logEvents(db, c.id, user.id, c, { published_date: null }, ["published_date"]);
-    return present(await loadContent(db, c.id), user, opts);
+    return db.tx(async (q) => {
+      const c = await visibleContent(q, user, params.id, opts, true);
+      if (!c.published_date) fail(409, "Konten ini belum ditandai tayang");
+      await q.run("update contents set published_url = null, published_date = null, published_by = null, revision = revision + 1, updated_at = ? where id = ?", [nowIso(), c.id]);
+      await logEvents(q, c.id, user.id, c, { published_date: null }, ["published_date"]);
+      return present(await loadContent(q, c.id), user, opts);
+    });
   });
 
   // Arsip (bukan hapus permanen). Marketing hanya untuk skrip miliknya yang belum diproduksi.
   route("DELETE", "/api/contents/:id", async ({ user, params }) => {
     const opts = await optionIndex(db);
-    const c = await visibleContent(db, user, params.id, opts);
-    if (!canDeleteContent(user, c, opts)) fail(403, "Hanya Leader Marketing, atau Marketing pemilik skrip yang belum diproduksi, yang dapat menghapus skrip");
     // Hapus permanen: riwayat ikut terhapus (cascade), file footage yang diunggah ikut dibuang.
     const files = await db.tx(async (q) => {
+      const c = await visibleContent(q, user, params.id, opts, true);
+      if (!canDeleteContent(user, c, opts)) fail(403, "Hanya Leader Marketing, atau Marketing pemilik skrip yang belum diproduksi, yang dapat menghapus skrip");
       const removed = await q.query("delete from footage where content_id = ? returning kind, file_path", [c.id]);
       await q.run("delete from contents where id = ?", [c.id]);
       return removed.filter((f) => f.kind === "file");
@@ -386,8 +403,8 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
   route("GET", "/api/kpis", async ({ user, query }) => {
     requireLeader(user);
     return db.query(
-      "select k.*, u.name user_name, u.role from kpis k join users u on u.id = k.user_id where substr(k.upload_date,1,7) = ? and u.role = ? order by k.upload_date",
-      [monthOf(query), user.role],
+      "select k.*, u.name user_name, u.role from kpis k join users u on u.id = k.user_id where k.upload_date between ? and ? and u.role = ? order by k.upload_date",
+      [`${monthOf(query)}-01`, `${monthOf(query)}-31`, user.role],
     );
   });
 
@@ -549,16 +566,17 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
     if (query.type) conds.push("f.type = ?"), params.push(query.type);
     if (query.content_id) conds.push("f.content_id = ?"), params.push(Number(query.content_id) || 0);
     const rows = await db.query(
-      `select f.*, u.name uploaded_by_name, c.title content_title, c.type_no content_no
+      `select f.*, u.name uploaded_by_name, c.title content_title, c.type_no content_no,
+         c.app c_app, c.type c_type, c.marketing_user_id c_marketing, c.creative_user_id c_creative, c.talent_name c_talent
        from footage f left join users u on u.id = f.uploaded_by left join contents c on c.id = f.content_id
-       ${conds.length ? `where ${conds.join(" and ")}` : ""} order by f.id desc limit 500`,
+       ${conds.length ? `where ${conds.join(" and ")}` : ""} order by f.id desc limit 5000`,
       params,
     );
     const opts = await optionIndex(db);
-    const cache = new Map();
-    const out = [];
-    for (const f of rows) if (await footageVisible(user, f, opts, cache)) out.push(f);
-    return out.map(({ file_path, ...f }) => f);
+    const visible = (f) => (f.content_id
+      ? canSee(user, { app: f.c_app, type: f.c_type, marketing_user_id: f.c_marketing, creative_user_id: f.c_creative, talent_name: f.c_talent }, opts)
+      : isLeader(user) || f.uploaded_by === user.id);
+    return rows.filter(visible).slice(0, 500).map(({ file_path, c_app, c_type, c_marketing, c_creative, c_talent, ...f }) => f);
   });
 
   route("POST", "/api/footage", async ({ user, body }) => {
@@ -616,7 +634,8 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
     const c = await visibleContent(db, user, Number(body.content_id) || 0, await optionIndex(db));
     const ids = (Array.isArray(body.ids) ? body.ids : []).map(Number).filter(Number.isInteger).slice(0, 200);
     for (const id of ids) {
-      await db.run("update footage set content_id = ? where id = ? and uploaded_by = ? and content_id is null and app = ? and type = ?", [c.id, id, user.id, c.app, c.type]);
+      // Apps/jenis footage mengikuti kontennya (bisa berubah di form setelah file diunggah).
+      await db.run("update footage set content_id = ?, app = ?, type = ? where id = ? and uploaded_by = ? and content_id is null", [c.id, c.app, c.type, id, user.id]);
     }
     return { ok: true };
   });
@@ -683,7 +702,7 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
     const key = params.key;
     const allowed = { app: null, talentName: null, script: ["Draft", "Ready"], talent: ["Belum", "Done", "Tidak perlu"], creative: ["Belum", "Done"], qc: ["", "Done", "Revisi"] };
     if (!(key in allowed)) fail(404, "Kolom tidak dikenal");
-    const list = Array.isArray(body.options) ? body.options : fail(422, "Daftar pilihan tidak valid");
+    const list = Array.isArray(body.options) && body.options.every((o) => o && typeof o === "object") ? body.options : fail(422, "Daftar pilihan tidak valid");
     const labels = list.map((o) => String(o.label ?? "").trim());
     if (!list.length || labels.some((l) => !l || l.length > 60)) fail(422, "Setiap pilihan perlu nama (maks. 60 karakter)");
     if (new Set(labels.map((l) => l.toLowerCase())).size !== labels.length) fail(422, "Nama pilihan dalam satu kolom harus berbeda");
@@ -724,10 +743,14 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
         for (const it of items) it.semantic = "";
       }
       const keep = new Set();
+      const usedIds = new Set((await q.query(
+        `select app id from contents union select script_status from contents union select talent_status from contents
+         union select talent_name from contents union select creative_status from contents union select qc_status from contents`,
+      )).map((r) => r.id));
       for (const it of items) {
         if (it.found) {
           // Mengubah arti proses pilihan yang sudah dipakai konten akan mengubah arti data lama; larang.
-          const used = await q.one("select 1 from contents where ? in (app, script_status, talent_status, talent_name, creative_status, qc_status) limit 1", [it.found.id]);
+          const used = usedIds.has(it.found.id);
           if (used && it.found.semantic !== it.semantic) fail(422, `"${it.found.label}" sudah dipakai konten; arti prosesnya tidak bisa diubah. Buat pilihan baru sebagai gantinya`);
           await q.run("update options set label = ?, semantic = ?, sort = ?, archived = 0, category = ? where id = ?", [it.label, it.semantic, it.i, it.category, it.found.id]);
           keep.add(it.found.id);
@@ -819,7 +842,10 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
       if (result === SENT) return;
       send(200, result ?? { ok: true });
       // Beritahu semua browser yang terbuka agar memuat ulang data.
-      if (req.method !== "GET" && match.auth) broadcast(url.pathname.split("/")[2]);
+      if (req.method !== "GET" && match.auth) {
+        const [, , what, id] = url.pathname.split("/");
+        broadcast(what, what === "contents" && /^\d+$/.test(id ?? "") ? Number(id) : null);
+      }
     } catch (e) {
       if (res.headersSent) return res.end();
       if (e instanceof HttpError) return send(e.status, { error: e.message, details: e.details });

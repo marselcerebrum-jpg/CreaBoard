@@ -1,6 +1,6 @@
 // Pemilih jenis konten, editor skrip (layout worksheet), detail, dan konfirmasi tayang.
 import {
-  $, addDays, api, closeModal, downloadUrl, hostOf, contentNo, delegate, errorText, esc, fmtDate, fmtStamp, icon, leads, myApps, openModal, optionTags, optLabel, reloadContents, richText, sem, state, toast, typeLabel, userName, usersByRole,
+  $, addDays, api, ApiError, closeModal, contentNo, delegate, downloadUrl, errorText, esc, fmtDate, fmtStamp, hostOf, icon, leads, myApps, openModal, optionTags, optLabel, reloadContents, richText, state, toast, typeLabel, userName,
 } from "./core.js";
 import { uploadFile } from "./footage.js";
 import { updateContent } from "./worksheet.js";
@@ -30,50 +30,36 @@ function blankSheet(type) {
   };
 }
 
-// ───────────── markup sheet ─────────────
-function cell(value, path, { read, cls = "", label, footage = false, footageEdit = false } = {}) {
-  // Kolom FOOTAGE bisa diisi semua peran, juga dari tampilan detail (tersimpan otomatis).
-  if (read && !(footage && footageEdit)) return `<div class="read">${richText(value) || '<span class="unfilled">—</span>'}</div>`;
-  // Detail: kolom footage memakai komponen yang sama dengan editor dan tersimpan otomatis.
-  if (read) return footageBox(path, value, { autosave: true });
-  if (footage) return footageBox(path, value);
-  return `<textarea class="${cls}" data-path="${path}" aria-label="${esc(label ?? path)}" placeholder="Tulis di sini…">${esc(value ?? "")}</textarea>`;
-}
+// ───────────── tampilan baca (detail) ─────────────
+const read = (v) => `<div class="read">${richText(v) || '<span class="unfilled">—</span>'}</div>`;
+const pathOf = (sh, path) => path.split(".").reduce((o, k) => o?.[k], sh) ?? "";
 
-export function sheetMarkup(sh, { read = false, id, footageEdit = false } = {}) {
-  const rows = sh.rows ?? [];
-  const head = `SKRIP ${id ? esc(id) : typeLabel(sh.type).toUpperCase()}`;
-  if (sh.type === "Video") {
-    const total = 4 + rows.length;
-    return `<div class="sheet"><table><colgroup><col style="width:7%"><col style="width:23%"><col style="width:16%"><col style="width:17%"><col style="width:13%"><col style="width:12%"><col style="width:12%"></colgroup>
-      <thead><tr><th colspan="2">${head}</th><th>FOOTAGE</th><th>ARAHAN EDITING</th><th>KETERANGAN</th><th>CAPTION TIKTOK</th><th>CAPTION INSTAGRAM</th></tr></thead><tbody>
-      ${META.Video.map((label, i) => `<tr><td class="row-label">${label}</td><td>${cell(sh.meta[i], `meta.${i}`, { read, cls: "compact", label })}</td>
-        <td class="footage">${cell(sh.metaFootage?.[i], `metaFootage.${i}`, { read, cls: "compact", label: `${label} footage`, footage: true, footageEdit })}</td>
-        <td class="editing">${cell(sh.metaEditing?.[i], `metaEditing.${i}`, { read, cls: "compact", label: `${label} arahan` })}</td>
-        ${i === 0 ? `<td rowspan="${total}">${cell(sh.notes, "notes", { read, cls: "long", label: "Keterangan" })}</td><td rowspan="${total}">${cell(sh.caption1, "caption1", { read, cls: "long", label: "Caption TikTok" })}</td><td rowspan="${total}">${cell(sh.caption2, "caption2", { read, cls: "long", label: "Caption Instagram" })}</td>` : ""}</tr>`).join("")}
-      ${rows.map((r, i) => `<tr><td class="row-label">${esc(r.label)}</td><td>${cell(r.text, `rows.${i}.text`, { read, label: `${r.label} skrip` })}</td>
-        <td class="footage">${cell(r.footage, `rows.${i}.footage`, { read, label: `${r.label} footage`, footage: true, footageEdit })}</td><td class="editing">${cell(r.direction, `rows.${i}.direction`, { read, label: `${r.label} arahan` })}</td></tr>`).join("")}
-      </tbody></table></div>`;
-  }
-  if (sh.type === "Carousel") {
-    return `<div class="sheet static"><table><colgroup><col style="width:11%"><col style="width:34%"><col style="width:19%"><col style="width:18%"><col style="width:18%"></colgroup>
-      <thead><tr><th colspan="2">${head}</th><th>FOOTAGE / ILUSTRASI</th><th>KETERANGAN DESAIN</th><th>CAPTION</th></tr></thead><tbody>
-      <tr><td class="row-label">Tema</td><td>${cell(sh.meta[0], "meta.0", { read, cls: "compact", label: "Tema" })}</td><td class="footage"></td><td>${cell(sh.notes, "notes", { read, cls: "compact", label: "Keterangan umum" })}</td>
-        <td rowspan="${rows.length + 1}">${cell(sh.caption1, "caption1", { read, cls: "long", label: "Caption" })}</td></tr>
-      ${rows.map((r, i) => `<tr><td class="row-label">${esc(r.label)}</td><td>${cell(r.text, `rows.${i}.text`, { read, label: r.label })}</td><td class="footage">${cell(r.footage, `rows.${i}.footage`, { read, label: `${r.label} footage`, footage: true, footageEdit })}</td><td>${cell(r.direction, `rows.${i}.direction`, { read, label: `${r.label} desain` })}</td></tr>`).join("")}
-      </tbody></table></div>`;
-  }
-  const last = rows.length - 1;
-  const entries = [
-    ["Judul / hook", sh.meta[0], "meta.0", "metaFootage.0"], ["Sumber", sh.meta[1], "meta.1"], ["Image / ilustrasi", sh.meta[2], "meta.2", "metaFootage.2"],
-    ["Isi", rows[0]?.text, "rows.0.text", `rows.0.footage`], ["CTA", rows[last]?.text, `rows.${last}.text`, `rows.${last}.footage`],
-  ];
-  return `<div class="sheet static"><table><colgroup><col style="width:12%"><col style="width:32%"><col style="width:20%"><col style="width:18%"><col style="width:18%"></colgroup>
-    <thead><tr><th colspan="2">${head}</th><th>FOOTAGE / ILUSTRASI</th><th>KETERANGAN</th><th>CAPTION</th></tr></thead><tbody>
-    ${entries.map(([label, v, path, fpath], i) => `<tr><td class="row-label">${label}</td><td>${cell(v, path, { read, cls: label === "Isi" ? "" : "compact", label })}</td>
-      <td class="footage">${fpath ? cell(fpath.split(".").reduce((o, k) => o?.[k], sh), fpath, { read, label: `${label} footage`, footage: true, footageEdit }) : ""}</td>
-      ${i === 0 ? `<td rowspan="5">${cell(sh.notes, "notes", { read, cls: "long", label: "Keterangan" })}</td><td rowspan="5">${cell(sh.caption1, "caption1", { read, cls: "long", label: "Caption" })}</td>` : ""}</tr>`).join("")}
-    </tbody></table></div>`;
+/** Detail skrip: tabel yang sama dengan editor Create Konten, hanya baca. */
+export function readTable(sh, { footageEdit = false } = {}) {
+  const t = sh.type;
+  const video = t === "Video";
+  const { intro, blocks } = tableSpec(t, sh.rows ?? []);
+  const total = intro.length + blocks.length;
+  const visual = (path) => (footageEdit ? footageBox(path, pathOf(sh, path), { autosave: true }) : read(pathOf(sh, path)));
+  const captions = (video ? ["caption1", "caption2"] : ["caption1"]).map((k) => `<td class="captioncell" rowspan="${total}">${read(sh[k])}</td>`).join("");
+  // Footage lama di baris pengantar Video (kata kunci/konsep/link) tetap ditampilkan bila ada isinya.
+  const introVisual = (i) => (video && pathOf(sh, `metaFootage.${i}`) ? read(pathOf(sh, `metaFootage.${i}`)) : "");
+  const body = [
+    ...intro.map(([label, path], i) => `<tr class="tableintro"><td class="part">${esc(label.toUpperCase())}</td><td>${read(pathOf(sh, path))}</td><td>${introVisual(i)}</td>${video ? "<td></td>" : ""}${i === 0 ? captions : ""}</tr>`),
+    ...blocks.map((b) => {
+      const dir = !video && b.text.startsWith("rows.") ? pathOf(sh, b.text.replace(".text", ".direction")) : "";
+      return `<tr><td class="part">${esc(b.label.toUpperCase())}</td><td>${read(pathOf(sh, b.text))}${dir ? `<div class="read-sub"><b>Keterangan desain:</b> ${richText(dir)}</div>` : ""}</td>
+        <td>${visual(b.visual)}</td>${video ? `<td>${read(pathOf(sh, b.remark))}</td>` : ""}</tr>`;
+    }),
+  ].join("");
+  const head = video
+    ? '<tr><th colspan="2" rowspan="2">SKRIP</th><th rowspan="2">FOOTAGE</th><th rowspan="2">KETERANGAN</th><th colspan="2">CAPTION</th></tr><tr><th>TIKTOK</th><th>INSTAGRAM</th></tr>'
+    : '<tr><th colspan="2">SKRIP</th><th>KETERANGAN</th><th>CAPTION</th></tr>';
+  const cols = video
+    ? '<col style="width:10%"><col style="width:31%"><col style="width:23%"><col style="width:12%"><col style="width:12%"><col style="width:12%">'
+    : '<col style="width:10%"><col style="width:44%"><col style="width:24%"><col style="width:22%">';
+  return `<div class="ck-${t}"><div class="ck-tablewrap read-table"><table class="ck-table"><colgroup>${cols}</colgroup><thead>${head}</thead><tbody>${body}</tbody></table></div>
+    ${sh.notes?.trim() ? `<div class="note"><b>Keterangan umum:</b> ${richText(sh.notes)}</div>` : ""}</div>`;
 }
 
 function setPath(path, value) {
@@ -166,6 +152,7 @@ window.addEventListener("beforeunload", (e) => {
   if (dirty && $("editorForm")) {
     storeDraft();
     e.preventDefault();
+    e.returnValue = "";
   }
 });
 
@@ -175,6 +162,7 @@ function openEditor(content, type) {
     id: c?.id ?? null,
     type: c?.type ?? type,
     sheet: c ? structuredClone(c.sheet) : blankSheet(type),
+    base: c ? structuredClone(c.sheet) : null, // isi saat editor dibuka (untuk menggabungkan perubahan orang lain)
     revision: c?.revision,
   };
   if (!draft.sheet.rows?.length) draft.sheet = blankSheet(draft.type);
@@ -229,11 +217,10 @@ function footageBox(path, value, { autosave = false } = {}) {
     <textarea placeholder="Ketik footage / ilustrasi…" aria-label="Arahan visual" ${autosave ? 'data-onchange="footage-save"' : ""}>${esc(text)}</textarea>
     <input type="url" placeholder="Tempel link…" aria-label="Link visual" data-ft2-link>
     <div class="ft2-links">${linkChips(links)}</div>
-    <label class="ft2-upload"><span>＋ Upload file</span><input type="file" multiple hidden data-onchange="ft2-upload"></label>
+    <label class="ft2-upload" tabindex="0" role="button" aria-label="Upload file footage"><span>＋ Upload file</span><input type="file" multiple hidden data-onchange="ft2-upload"></label>
     <div class="ft2-files">${fileChips(files)}</div></div>`;
 }
 
-const keepInactive = (list, id) => (id && !list.some((u) => u.id === id) ? `<option value="${id}" selected>${esc(userName(id) || "Akun nonaktif")} (nonaktif)</option>` : "");
 
 /** Baris tabel per jenis: baris pengantar (teks saja) dan blok (teks + visual [+ keterangan Video]). */
 function tableSpec(t, rows) {
@@ -323,33 +310,63 @@ function relabel() {
   });
 }
 
+/** Footage yang tidak kita ubah di editor diambil dari versi server terbaru (mis. ditambah Creative dari detail). */
+function mergeServerFootage(latest) {
+  const base = draft.base;
+  const take = (get, set) => {
+    if (JSON.stringify(get(draft.sheet)) === JSON.stringify(get(base))) set(get(latest));
+  };
+  (latest.metaFootage ?? []).forEach((_, i) => take((s) => s.metaFootage?.[i] ?? "", (v) => ((draft.sheet.metaFootage ??= [])[i] = v)));
+  if ((latest.rows ?? []).length === draft.sheet.rows.length && base.rows.length === draft.sheet.rows.length) {
+    latest.rows.forEach((_, i) => take((s) => s.rows?.[i]?.footage ?? "", (v) => (draft.sheet.rows[i].footage = v)));
+  }
+  draft.base = structuredClone(latest);
+}
+
+/** Semua file unggahan yang tercantum di skrip dihubungkan ke kontennya. */
+async function attachFiles(contentId) {
+  const ids = new Set([...uploadedIds, ...[...JSON.stringify(draft.sheet).matchAll(/\/api\/footage\/(\d+)\/file/g)].map((m) => Number(m[1]))]);
+  uploadedIds = [];
+  if (!ids.size) return true;
+  return api("POST", "/api/footage/attach", { content_id: contentId, ids: [...ids] }).then(() => true, () => false);
+}
+
 async function saveEditor(c) {
   captureSheet();
   const fields = { app: $("eApp").value, upload_date: $("eUpload").value, priority: $("ePriority").value };
   const errorEl = $("editorError");
   const submit = document.querySelector('#editorForm button[type="submit"]');
-  let failed = 0;
   submit.disabled = true; // cegah skrip ganda saat footage masih diunggah
   try {
     if (!(draft.sheet.title || draft.sheet.meta[0])?.trim()) throw new Error("Info skrip / judul konten perlu diisi.");
+    let contentId = c?.id;
     if (c) {
-      const changes = { sheet: draft.sheet };
-      for (const [k, v] of Object.entries(fields)) if (c.editable.includes(k) && v !== c[k]) changes[k] = v;
-      await updateContent(c.id, changes, { revision: draft.revision });
+      const send = () => {
+        const changes = { sheet: draft.sheet };
+        for (const [k, v] of Object.entries(fields)) if (c.editable.includes(k) && v !== c[k]) changes[k] = v;
+        return updateContent(c.id, changes, { revision: draft.revision });
+      };
+      try {
+        await send();
+      } catch (e) {
+        // Orang lain baru saja mengubah skrip ini: ambil versi terbaru, pertahankan footage mereka, lalu simpan ulang.
+        if (!(e instanceof ApiError && e.status === 409 && /baru saja diubah/.test(e.message))) throw e;
+        const latest = await api("GET", `/api/contents/${c.id}`);
+        mergeServerFootage(latest.sheet);
+        draft.revision = latest.revision;
+        await send();
+      }
       draft.revision = state.contents.find((x) => x.id === c.id)?.revision;
     } else {
-      const created = await api("POST", "/api/contents", { type: draft.type, sheet: draft.sheet, ...fields });
-      clearDraft();
-      dirty = false;
-      if (uploadedIds.length) await api("POST", "/api/footage/attach", { content_id: created.id, ids: uploadedIds }).catch(() => {});
-      uploadedIds = [];
-      await reloadContents();
+      contentId = (await api("POST", "/api/contents", { type: draft.type, sheet: draft.sheet, ...fields })).id;
     }
+    const attached = await attachFiles(contentId);
+    await reloadContents();
     clearDraft();
     dirty = false;
     closeModal();
-    if (failed) toast(`Skrip tersimpan, tetapi ${failed} footage gagal diunggah. Tambahkan lagi dari detail skrip.`, { error: true });
-    else toast("Skrip tersimpan. Dashboard sudah diperbarui.");
+    if (attached) toast("Skrip tersimpan. Dashboard sudah diperbarui.");
+    else toast("Skrip tersimpan, tetapi sebagian file footage gagal dihubungkan. Coba simpan ulang dari detail skrip.", { error: true });
     window.dispatchEvent(new Event("cs:changed"));
   } catch (e) {
     errorEl.textContent = errorText(e);
@@ -403,7 +420,7 @@ export async function openDetail(id) {
   openModal(
     `<div class="modalhead"><div><div class="eyebrow">${esc(optLabel(c.app))} / ${typeLabel(c.type)} / SKRIP ${esc(contentNo(c))}${c.priority && c.priority !== "Reguler" ? ` · ${esc(c.priority.toUpperCase())}` : ""}</div><h2 id="modalTitle">${esc(c.title)}</h2></div><button class="close" aria-label="Tutup" data-action="close-modal">×</button></div>
     <div class="modalbody"><div class="inline-meta">${chips.map((x) => `<span>${esc(x)}</span>`).join("")}</div>
-      ${published}${sheetMarkup(c.sheet, { read: true, id: contentNo(c), footageEdit: c.editable.includes("footage") })}
+      ${published}${readTable(c.sheet, { footageEdit: c.editable.includes("footage") })}
       <div class="note">Catatan: ${esc(c.notes) || "Belum ada catatan produksi."}</div>${publishForm}
       <details class="panel" style="margin-top:14px"><summary class="small" style="cursor:pointer">Riwayat perubahan (${c.events.length})</summary><ul class="events">
         ${c.events.map((e) => `<li><b>${esc(e.user_name ?? "—")}</b> · ${esc(FIELD_LABEL[e.field] ?? e.field)}${e.field === "sheet" || e.field === "created" ? "" : `: ${esc(eventValue(e.field, e.from_value))} → ${esc(eventValue(e.field, e.to_value))}`}<div class="small">${esc(fmtStamp(e.at))}</div></li>`).join("")}
@@ -432,10 +449,6 @@ export async function deleteContent(id) {
 }
 
 // Format teks: bungkus seleksi di kotak skrip dengan **tebal** atau *miring*.
-let lastField = null;
-document.addEventListener("focusin", (e) => {
-  if (e.target.matches?.("#editorForm textarea[data-path]")) lastField = e.target;
-});
 function applyMark(field, mark) {
   if (!field) return;
   const { selectionStart: a, selectionEnd: b, value } = field;
@@ -472,7 +485,7 @@ function setBoxLinks(box, links) {
   box.dataset.links = JSON.stringify(links);
   box.querySelector(".ft2-links").innerHTML = linkChips(links);
   box.querySelector("textarea").dispatchEvent(new Event("input", { bubbles: true }));
-  if (!$("editorForm")) saveDetailFootage();
+  if (!$("editorForm")) saveDetailFootage(box.dataset.fpath);
 }
 function addFootageLink(box) {
   const input = box.querySelector("[data-ft2-link]");
@@ -482,6 +495,11 @@ function addFootageLink(box) {
   setBoxLinks(box, [...new Set([...boxList(box, "links"), ...urls])]);
 }
 document.addEventListener("keydown", (e) => {
+  if ((e.key === "Enter" || e.key === " ") && e.target.matches?.(".ft2-upload")) {
+    e.preventDefault();
+    e.target.querySelector("input[type=file]").click();
+    return;
+  }
   if (e.key !== "Enter" || !e.target.matches?.("[data-ft2-link]")) return;
   e.preventDefault(); // jangan ikut menyimpan form
   addFootageLink(e.target.closest(".ft2"));
@@ -514,7 +532,7 @@ document.addEventListener("input", (e) => {
 // Unggah dari kolom Footage / Ilustrasi: file tampil sebagai daftar di kolom itu.
 let uploading = 0;
 delegate(document.body, "change", {
-  "footage-save": () => saveDetailFootage(),
+  "footage-save": (el) => saveDetailFootage(el.closest(".ft2")?.dataset.fpath),
   "ft2-upload": async (el) => {
     const files = [...el.files];
     el.value = "";
@@ -536,7 +554,7 @@ delegate(document.body, "change", {
         box.querySelector(".ft2-files").innerHTML = fileChips(list);
         box.querySelector("textarea").dispatchEvent(new Event("input", { bubbles: true }));
       }
-      if (inDetail) await saveDetailFootage();
+      if (inDetail) await saveDetailFootage(box.dataset.fpath);
       else toast(`${files.length} file terunggah`);
     } catch (e) {
       toast(e.message, { error: true });
@@ -547,22 +565,23 @@ delegate(document.body, "change", {
   },
 });
 
-/** Simpan kolom FOOTAGE dari tampilan detail (semua peran). */
-async function saveDetailFootage() {
+/** Simpan satu kolom footage dari tampilan detail (semua peran). Kolom lain tidak dikirim agar tidak menimpa. */
+async function saveDetailFootage(path) {
   const c = draft?.content;
-  if (!c) return;
-  const val = (path) => {
-    const box = document.querySelector(`#modal .ft2[data-fpath="${path}"]`);
-    if (box) return footageValue(box);
-    return document.querySelector(`#modal textarea[data-path="${path}"]`)?.value ?? "";
-  };
-  const footage = {
-    // Baris yang tidak tampil di detail tetap memakai nilai lamanya.
-    metaFootage: (c.sheet.meta ?? []).map((_, i) => (document.querySelector(`#modal .ft2[data-fpath="metaFootage.${i}"]`) ? val(`metaFootage.${i}`) : c.sheet.metaFootage?.[i] ?? "")),
-    rows: c.sheet.rows.map((_, i) => val(`rows.${i}.footage`)),
-  };
+  const box = path && document.querySelector(`#modal .ft2[data-fpath="${path}"]`);
+  if (!c || !box) return;
+  const [group, idx] = path.split(".");
+  const i = Number(idx);
+  const footage = group === "metaFootage"
+    ? { metaFootage: (c.sheet.meta ?? []).map((_, k) => (k === i ? footageValue(box) : null)) }
+    : { rows: c.sheet.rows.map((_, k) => (k === i ? footageValue(box) : null)) };
   try {
-    draft.content = await updateContent(c.id, { footage });
+    try {
+      draft.content = await updateContent(c.id, { footage });
+    } catch (e) {
+      if (!(e instanceof ApiError && e.status === 409 && /baru saja diubah/.test(e.message))) throw e;
+      draft.content = await updateContent(c.id, { footage }); // revisi terbaru sudah dimuat
+    }
     toast("Footage tersimpan");
   } catch (e) {
     toast(errorText(e), { error: true });
@@ -570,13 +589,15 @@ async function saveDetailFootage() {
 }
 
 delegate(document.body, "click", {
-  fmt: (el) => applyMark(el.dataset.target ? document.querySelector(`#modal textarea[data-path="${el.dataset.target}"]`) : lastField, el.dataset.mark),
+  fmt: (el) => applyMark(document.querySelector(`#modal textarea[data-path="${el.dataset.target}"]`), el.dataset.mark),
   "switch-type": (el) => {
     const type = el.dataset.type;
     if (draft.id || type === draft.type) return;
     if (uploading) return toast("Tunggu unggahan footage selesai.");
     captureSheet();
-    const written = draft.sheet.rows.some((r) => r.text?.trim() || r.footage?.trim() || r.direction?.trim());
+    const filled = (v) => typeof v === "string" && v.trim() !== "";
+    const written = draft.sheet.rows.some((r) => filled(r.text) || filled(r.footage) || filled(r.direction))
+      || [...(draft.sheet.meta ?? []), ...(draft.sheet.metaFootage ?? []), ...(draft.sheet.metaEditing ?? [])].some(filled);
     if (written && !confirm(`Ganti ke ${typeLabel(type)}? Isi tabel akan dikosongkan (judul, kata kunci & caption tetap).`)) return;
     const { title, keyword, caption1, caption2 } = draft.sheet;
     draft.type = type;
@@ -596,7 +617,7 @@ delegate(document.body, "click", {
     box.dataset.files = JSON.stringify(list);
     box.querySelector(".ft2-files").innerHTML = fileChips(list);
     box.querySelector("textarea").dispatchEvent(new Event("input", { bubbles: true }));
-    if (!$("editorForm")) saveDetailFootage();
+    if (!$("editorForm")) saveDetailFootage(box.dataset.fpath);
   },
   "draft-restore": () => {
     if (!pendingDraft) return;

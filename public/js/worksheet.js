@@ -1,6 +1,6 @@
 // Dashboard dan worksheet produksi (tabel dengan dropdown per sel; kartu di ponsel).
 import {
-  api, ApiError, contentNo, delegate, errorText, esc, fmtDate, fmtStamp, icon, isLeader, leads, myApps, optionTags, optLabel, reloadContents, searchText, sem,
+  api, ApiError, contentNo, optionsFor, delegate, errorText, esc, fmtDate, fmtStamp, icon, isLeader, leads, myApps, optionTags, optLabel, reloadContents, searchText, sem,
   state, toast, TYPES, typeLabel, usersByRole, userName,
 } from "./core.js";
 
@@ -77,6 +77,7 @@ const cellError = (c, field) => {
 /** Sel yang menjadi langkah berikutnya diberi sorotan kuning. */
 function attention(c, field) {
   const f = c.flags;
+  if (!c.editable.includes(field)) return false;
   return (
     (field === "script_status" && sem(c.script_status) === "Draft" && !f.published) ||
     (field === "talent_status" && f.talent) ||
@@ -150,7 +151,7 @@ const CELLS = {
 // Urutan kolom mengikuti pekerjaan tiap peran: kolom tugas sendiri di depan.
 const ORDER = {
   // Catatan tetap ada: QC "Revisi" wajib disertai catatan revisi.
-  default: ["script", "priority", "talentName", "take", "editor", "creative", "qc", "upload", "notes", "aksi"],
+  default: ["script", "priority", "creative", "qc", "talentName", "take", "editor", "upload", "notes", "aksi"],
   Creative: ["creative", "link", "editor", "qc", "upload", "script", "priority", "talentName", "take", "notes", "aksi"],
   Talent: ["take", "talentName", "upload", "script", "priority", "editor", "creative", "qc", "notes", "aksi"],
 };
@@ -169,13 +170,16 @@ function tableHtml(rows) {
   const body = rows.length
     ? rows.map((c) => `<tr><td class="sticky-a open-cell" data-action="detail" data-id="${c.id}"><button class="number" aria-label="Buka skrip ${esc(c.title)}">${esc(contentNo(c))}</button></td><td class="sticky-b open-cell" data-action="detail" data-id="${c.id}" title="Buka skrip">${contentCell(c)}</td>${cols.map((k) => `<td>${CELLS[k].html(c)}</td>`).join("")}</tr>`).join("")
     : `<tr><td colspan="${cols.length + 2}" class="empty">Tidak ada konten yang cocok. Ubah filter atau buat konten baru.</td></tr>`;
+  if (!isNarrow()) {
+    return `<div class="tablewrap ws-table"><table><thead><tr><th class="sticky-a">No.</th><th class="sticky-b">Konten · USP/Keyword</th>${cols.map((k) => `<th>${CELLS[k].head}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div>`;
+  }
   const cards = rows.length
     ? rows.map((c) => `<article class="ws-card"><header class="open-cell" data-action="detail" data-id="${c.id}"><button class="number">${esc(contentNo(c))}</button><div>${titleCell(c)}</div></header>
         <dl>${cols.map((k) => `<div><dt>${CELLS[k].head}</dt><dd>${CELLS[k].html(c)}</dd></div>`).join("")}</dl></article>`).join("")
     : '<p class="empty">Tidak ada konten yang cocok.</p>';
-  return `<div class="tablewrap ws-table"><table><thead><tr><th class="sticky-a">No.</th><th class="sticky-b">Konten · USP/Keyword</th>${cols.map((k) => `<th>${CELLS[k].head}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></div>
-    <div class="ws-cards">${cards}</div>`;
+  return `<div class="ws-cards only">${cards}</div>`;
 }
+const isNarrow = () => window.matchMedia("(max-width: 760px)").matches;
 
 function worksheetSection(title, rows, subtitle) {
   return `<section class="worksheet">
@@ -192,6 +196,9 @@ function worksheetSection(title, rows, subtitle) {
 
 // ───────────── halaman ─────────────
 let dashMonth = "";
+const dashCache = { key: "", data: null };
+/** Dipanggil saat ada perubahan dari server: data kalender/target dashboard dimuat ulang. */
+export const clearDashCache = () => (dashCache.data = null);
 const monthName = (m) => {
   const [y, mm] = m.split("-").map(Number);
   return new Intl.DateTimeFormat("id-ID", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(y, mm - 1, 1)));
@@ -207,9 +214,12 @@ async function dashNumbers() {
   const byType = Object.fromEntries(TYPES.map((t) => [t, { target: 0, actual: 0, progress: 0 }]));
   const uploaded = state.contents.filter((c) => inMonth(c.published_date)).length;
   if (role === "Marketing") {
-    const [cal, h3] = await Promise.all([api("GET", `/api/calendar?month=${dashMonth}`), api("GET", "/api/targets/h3")]);
-    const scope = myApps();
-    const ok = (app) => !scope.length || scope.includes(app);
+    dashCache.key !== dashMonth && Object.assign(dashCache, { key: dashMonth, data: null });
+    dashCache.data ??= await Promise.all([api("GET", `/api/calendar?month=${dashMonth}`), api("GET", "/api/targets/h3")]);
+    const [cal, h3] = dashCache.data;
+    // Sama dengan Kalender: hanya apps yang masih aktif (dan milik staff bila dibagi).
+    const scope = new Set(optionsFor("app").filter((o) => !myApps().length || myApps().includes(o.id)).map((o) => o.id));
+    const ok = (app) => scope.has(app);
     for (const p of cal.plans) {
       if (!ok(p.app) || p.amount == null) continue;
       byType[p.type].target += p.amount;
@@ -223,7 +233,7 @@ async function dashNumbers() {
     return {
       byType, uploaded,
       doneTitle: "Skrip selesai", doneSub: "Skrip yang sudah siap untuk diproduksi.", doneIcon: "qc",
-      targetSub: `Total target konten untuk ${monthName(dashMonth)}.`,
+      targetSub: `Total rencana di Konten kalender untuk ${monthName(dashMonth)}.`,
       rate: { value: TYPES.reduce((x, t) => x + byType[t].progress, 0), label: "target terpenuhi sesuai tanggal" },
       alert: { need, title: "skrip perlu disiapkan", sub: `Target sampai ${fmtDate(h3.to)}.`, action: '<button class="btn wide" data-action="goto" data-page="calendar">' + icon("calendar", 16) + " Lihat kalender</button>" },
     };
@@ -241,7 +251,7 @@ async function dashNumbers() {
   const need = Object.fromEntries(TYPES.map((t) => [t, 0]));
   for (const c of state.contents) {
     if (c.upload_date > until) continue;
-    if (talent ? c.flags.talent : c.flags.edit || c.flags.revision) need[c.type]++;
+    if (talent ? c.flags.talent : c.flags.edit) need[c.type]++;
   }
   const done = TYPES.reduce((n, t) => n + byType[t].actual, 0);
   return {
@@ -264,6 +274,7 @@ export async function renderDashboard(root) {
   const actual = TYPES.reduce((x, t) => x + n.byType[t].actual, 0);
   const rate = pctOf(n.rate.value, target);
   // Header: subjudul dan pilihan bulan.
+  if (state.page !== "dashboard") return; // pengguna sudah pindah halaman saat data dimuat
   $id("pageSub").textContent = "Perencanaan dan aktual konten dalam satu tempat.";
   $id("pageSub").classList.remove("hidden");
   $id("headTools").innerHTML = `<label class="month-pick">${icon("calendar", 16)}<input type="month" value="${dashMonth}" data-onchange="dash-month" aria-label="Bulan"></label>`;
@@ -385,7 +396,7 @@ delegate(document.body, "change", {
         await updateContent(id, { [field]: value });
       } catch (e) {
         // Baris baru saja diubah orang lain: terapkan ulang perubahan kolom ini ke versi terbaru.
-        if (!(e instanceof ApiError && e.status === 409)) throw e;
+        if (!(e instanceof ApiError && e.status === 409 && /baru saja diubah/.test(e.message))) throw e;
         await updateContent(id, { [field]: value });
       }
       for (const k of [...cellErrors.keys()]) if (k.startsWith(`${id}:`)) cellErrors.delete(k);

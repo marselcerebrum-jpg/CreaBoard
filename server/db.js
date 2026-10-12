@@ -80,6 +80,7 @@ create table if not exists events (
   at         text not null default ${TS_DEFAULT}
 );
 create index if not exists events_content_idx on events(content_id, at);
+create index if not exists sessions_user_idx on sessions(user_id);
 
 create table if not exists calendar_plans (
   app    text not null,
@@ -89,6 +90,7 @@ create table if not exists calendar_plans (
   color  text,
   primary key (app, type, date)
 );
+create index if not exists calendar_plans_date_idx on calendar_plans(date);
 
 -- Pembagian apps (khusus staff Marketing, diatur Leader Marketing).
 create table if not exists user_apps (

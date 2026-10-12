@@ -1,9 +1,9 @@
-import { $, api, closeModal, delegate, errorText, esc, icon, isLeader, myApps, reloadContents, state, toast } from "./core.js";
+import { $, api, ApiError, closeModal, delegate, errorText, esc, icon, isLeader, myApps, reloadContents, state, toast } from "./core.js";
 import { renderCalendar } from "./calendar.js";
 import { openContentPicker, openDetail } from "./editor.js";
 import { renderSettings } from "./settings.js";
 import { renderTeam } from "./team.js";
-import { renderDashboard, renderWorksheet } from "./worksheet.js";
+import { clearDashCache, renderDashboard, renderWorksheet } from "./worksheet.js";
 
 const PAGES = {
   dashboard: { label: "Dashboard", icon: "dashboard", render: renderDashboard },
@@ -54,7 +54,7 @@ export async function rerender() {
   try {
     await PAGES[page].render($("page"));
     // Render lambat milik halaman sebelumnya tidak boleh menimpa halaman yang sedang dibuka.
-    if (seq !== renderSeq && page !== state.page) await PAGES[state.page].render($("page"));
+    if (seq !== renderSeq) await PAGES[state.page].render($("page"));
   } catch (e) {
     $("page").innerHTML = `<p class="form-error">${esc(errorText(e))}</p>`;
   }
@@ -81,6 +81,7 @@ async function boot() {
     .map((p) => `<button data-page="${p}" data-action="nav">${icon(PAGES[p].icon)}<span>${p === "create" && role === "Creative" ? "Produksi konten" : PAGES[p].label}</span></button>`)
     .join("");
   navigate(location.hash.slice(1) || "dashboard");
+  syncAsideHeight();
   startLiveUpdates();
 }
 
@@ -138,6 +139,17 @@ document.addEventListener("keydown", (e) => {
 // (isian itu akan hilang). Dalam hal itu render ditunda sampai kolom ditinggalkan.
 let lastChanged = null;
 document.addEventListener("change", (e) => (lastChanged = e.target), true);
+// Di ponsel, editor/detail penuh dimulai di bawah bilah menu atas agar menu tetap bisa diklik.
+const syncAsideHeight = () => document.documentElement.style.setProperty("--aside-h", `${document.querySelector("aside")?.offsetHeight ?? 0}px`);
+let wasNarrow = window.matchMedia("(max-width: 760px)").matches;
+window.addEventListener("resize", () => {
+  syncAsideHeight();
+  const narrow = window.matchMedia("(max-width: 760px)").matches;
+  if (narrow !== wasNarrow && state.me) {
+    wasNarrow = narrow;
+    rerender(); // tabel ↔ kartu
+  }
+});
 window.addEventListener("cs:changed", () => {
   const a = document.activeElement;
   const editingOther = a && a !== lastChanged && a.closest("#page") && a.matches('[data-onchange="cell"], [data-onchange="plan"], textarea');
@@ -164,22 +176,54 @@ async function syncNow() {
   pendingSync = false;
   // Tab yang dibiarkan terbuka melewati tengah malam: "hari ini" ikut berganti.
   state.today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date());
+  clearDashCache();
+  const ids = [...changedIds];
+  const full = needFull;
+  changedIds.clear();
+  needFull = false;
   try {
-    await reloadContents();
+    if (full || ids.length > 10) await reloadContents();
+    else await Promise.all(ids.map(refreshOne));
     // Halaman Setting tidak dirender ulang agar isian yang belum disimpan tidak hilang.
     if (state.page !== "settings") await rerender();
   } catch {
     // koneksi putus sementara; dicoba lagi pada sinyal berikutnya
   }
 }
+const changedIds = new Set();
+let needFull = true;
+/** Muat ulang satu konten (hilang dari daftar bila dihapus atau tidak lagi terlihat). */
+async function refreshOne(id) {
+  try {
+    const { events, ...c } = await api("GET", `/api/contents/${id}`);
+    const i = state.contents.findIndex((x) => x.id === id);
+    if (i >= 0) state.contents[i] = c;
+    else state.contents.push(c);
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) state.contents = state.contents.filter((x) => x.id !== id);
+    else throw e;
+  }
+}
 function startLiveUpdates() {
   const source = new EventSource("/api/stream");
-  source.onmessage = () => {
+  source.onmessage = (e) => {
+    let msg = {};
+    try {
+      msg = JSON.parse(e.data);
+    } catch {
+      // abaikan
+    }
+    if (msg.what === "contents" && msg.id) changedIds.add(msg.id);
+    else needFull = true;
     clearTimeout(syncTimer);
     syncTimer = setTimeout(syncNow, 400);
   };
   // Cadangan bila koneksi stream terputus lama: sinkron tiap 60 detik.
-  setInterval(() => document.visibilityState === "visible" && syncNow(), 60_000);
+  setInterval(() => {
+    if (document.visibilityState !== "visible") return;
+    needFull = true;
+    syncNow();
+  }, 60_000);
 }
 document.addEventListener("focusout", () => pendingSync && setTimeout(syncNow, 300));
 window.addEventListener("cs:modal-closed", () => pendingSync && syncNow());
