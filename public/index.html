@@ -3,18 +3,20 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Content Studio</title>
-  <meta name="description" content="Workspace Marketing & Creative">
+  <title>Creative Desk</title>
+  <meta name="description" content="Creative Desk — workspace skrip, produksi, dan kalender konten tim Marketing & Creative">
   <meta name="theme-color" content="#C62828">
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.png" type="image/png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="stylesheet" href="/styles.css">
   <script type="module" src="/js/main.js"></script>
 </head>
 <body>
   <div id="loginView" class="login hidden">
     <form id="loginForm" class="login-card">
-      <div class="brand"><span class="logo">c.</span>content studio</div>
+      <img class="login-logo" src="/logo.png" alt="Creative Desk" width="900" height="277">
+      <p class="login-sub">Masuk untuk mengelola skrip, produksi, dan kalender konten.</p>
       <div class="field"><label for="loginUser">Username</label><input id="loginUser" autocomplete="username" required></div>
       <div class="field"><label for="loginPass">Password</label><input id="loginPass" type="password" autocomplete="current-password" required></div>
       <p id="loginError" class="form-error hidden" role="alert"></p>
@@ -25,7 +27,7 @@
   <div id="appView" class="hidden">
     <aside>
       <div class="aside-top">
-        <div class="brand"><span class="logo">c.</span>content studio</div>
+        <div class="brand"><span class="logo"><img src="/logo-mark.png" alt="" width="96" height="96"></span>Creative Desk</div>
         <div class="aside-tools">
           <button class="settings-btn" id="settingsBtn" data-action="settings" aria-label="Setting">Setting</button>
           <button class="logout-btn" id="logoutBtn" data-action="logout" aria-label="Keluar">Keluar</button>

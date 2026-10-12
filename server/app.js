@@ -1,4 +1,4 @@
-// HTTP server Content Studio: API JSON + file statis dari /public.
+// HTTP server Creative Desk: API JSON + file statis dari /public.
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";

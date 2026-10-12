@@ -2,7 +2,7 @@
   "name": "content-studio",
   "version": "1.0.0",
   "private": true,
-  "description": "Content Studio - workspace Marketing & Creative (server Node.js + PostgreSQL)",
+  "description": "Creative Desk — workspace skrip, produksi, dan kalender konten tim Marketing & Creative",
   "type": "module",
   "engines": {
     "node": ">=22.13"

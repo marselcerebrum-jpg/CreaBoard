@@ -1,4 +1,4 @@
-// Aturan bisnis Content Studio. Semua keputusan izin & workflow ada di sini (server),
+// Aturan bisnis Creative Desk. Semua keputusan izin & workflow ada di sini (server),
 // bukan di UI, sehingga tidak bisa dilewati lewat devtools.
 
 export const TYPES = ["Video", "Carousel", "Singlepost"];
