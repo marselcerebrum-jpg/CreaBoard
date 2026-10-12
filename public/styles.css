@@ -1,4 +1,4 @@
-/* Content Studio — palet: #F5F5DC (krem) · #FBC02D (kuning) · #FF8F00 (oranye) · #C62828 (merah)
+/* Creative Desk — palet: #F5F5DC (krem) · #FBC02D (kuning) · #FF8F00 (oranye) · #C62828 (merah)
    + warna status semantik (hijau selesai, biru siap, kuning langkah berikutnya, merah revisi/terlewat). */
 :root {
   --accent: #FF8F00;   /* tombol aksi (oranye; teks gelap agar terbaca) */
@@ -196,8 +196,8 @@ tr:hover td { background: #FDFDF5; }
 .panel.narrow { max-width: 560px; }
 
 /* ───────── login & toast ───────── */
-.login { min-height: 100vh; display: grid; place-items: center; padding: 20px; background: linear-gradient(115deg, var(--forest), var(--fern)); }
-.login-card { width: 100%; max-width: 380px; background: #fff; padding: 30px; border-radius: 16px; display: flex; flex-direction: column; gap: 14px; }
+.login { min-height: 100vh; display: grid; place-items: center; padding: 20px; background: #F5F5DC; }
+.login-card { width: 100%; max-width: 380px; background: #fff; padding: 30px; border-radius: 16px; display: flex; flex-direction: column; gap: 14px; border: 1px solid var(--line); box-shadow: 0 10px 40px #6B615214; }
 .login-logo { display: block; width: 100%; max-width: 260px; height: auto; margin: 4px auto 0; }
 .login-sub { margin: 0 0 6px; text-align: center; font-size: 13px; color: var(--muted); }
 .toast { position: fixed; bottom: 20px; right: 20px; max-width: min(460px, calc(100vw - 32px)); display: flex; align-items: center; gap: 14px; background: var(--forest); color: #fff; padding: 12px 16px; border-radius: 10px; z-index: 50; box-shadow: 0 8px 30px #2B211840; font-size: 13px; }
