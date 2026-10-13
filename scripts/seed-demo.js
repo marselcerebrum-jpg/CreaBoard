@@ -1,6 +1,6 @@
 // Mengisi database dengan akun & konten contoh lewat API asli (aturan workflow tetap berlaku).
 //   npm run demo                       → PGlite lokal di data/pglite (hanya bila belum ada konten)
-//   DATABASE_URL=postgres://… npm run demo → Postgres/Supabase
+//   DATABASE_URL=postgres://… atau mysql://… npm run demo → Postgres / MySQL
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createApp } from "../server/app.js";
@@ -150,13 +150,16 @@ await leader.call("PUT", "/api/calendar/plan", { app: appId("JadiBeasiswa"), typ
 
 // Data demo dibuat sekaligus hari ini; mundurkan waktu selesai agar performa terlihat realistis.
 // (Hanya untuk demo — di pemakaian nyata timestamp dicatat server saat status berubah.)
-const day = (expr) => `to_char((${expr})::date, 'YYYY-MM-DD')`;
+const my = db.dialect === "mysql";
+const day = (col, n) => my ? `date_format(date_add(${col}, interval ${n} day), '%Y-%m-%d')` : `to_char((${col}::date + ${n})::date, 'YYYY-MM-DD')`;
+const cat = (...parts) => my ? `concat(${parts.join(", ")})` : parts.join(" || ");
+const today = my ? "date_format(now(), '%Y-%m-%d')" : "to_char(now()::date, 'YYYY-MM-DD')";
 await db.exec(`
-  update contents set script_ready_at = created_date || 'T03:00:00.000Z' where script_ready_at is not null;
-  update contents set talent_done_at = least(${day("created_date::date + 1")}, ${day("upload_date::date - 1")}) || 'T05:00:00.000Z' where talent_done_at is not null;
-  update contents set creative_done_at = ${day("upload_date::date - 1")} || 'T07:00:00.000Z', link_at = ${day("upload_date::date - 1")} || 'T07:00:00.000Z'
-    where creative_done_at is not null and ${day("upload_date::date - 1")} <= ${day("now()")};
-  update contents set script_ready_at = ${day("upload_date::date - 1")} || 'T03:00:00.000Z' where title = 'Cara menjawab soal numerik';
+  update contents set script_ready_at = ${cat("created_date", "'T03:00:00.000Z'")} where script_ready_at is not null;
+  update contents set talent_done_at = ${cat(`least(${day("created_date", 1)}, ${day("upload_date", -1)})`, "'T05:00:00.000Z'")} where talent_done_at is not null;
+  update contents set creative_done_at = ${cat(day("upload_date", -1), "'T07:00:00.000Z'")}, link_at = ${cat(day("upload_date", -1), "'T07:00:00.000Z'")}
+    where creative_done_at is not null and ${day("upload_date", -1)} <= ${today};
+  update contents set script_ready_at = ${cat(day("upload_date", -1), "'T03:00:00.000Z'")} where title = 'Cara menjawab soal numerik';
 `);
 server.close();
 await close();

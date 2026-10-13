@@ -207,7 +207,7 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
     applyWorkflow(empty, draft, opts, nowIso());
     const id = await db.tx(async (q) => {
       // Nomor urut per jenis konten; kunci per jenis agar dua pembuatan bersamaan tidak dapat nomor sama.
-      await q.query("select pg_advisory_xact_lock(hashtext(?))", [`creaboard:type_no:${type}`]);
+      await q.lock(`creaboard:type_no:${type}`);
       const { n } = await q.one("select coalesce(max(type_no), 0)::int + 1 n from contents where type = ?", [type]);
       const row = await q.one(
         `insert into contents (${CONTENT_COLS.join(", ")}, sheet, type_no) values (${CONTENT_COLS.map(() => "?").join(", ")}, ?, ?) returning id`,
@@ -250,7 +250,7 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
       // Nomor per jenis: pindah jenis = nomor baru di jenis tujuan (dihitung sebelum update agar indeks unik tidak bentrok).
       let typeNo = prev.type_no;
       if (next.type !== prev.type) {
-        await q.query("select pg_advisory_xact_lock(hashtext(?))", [`creaboard:type_no:${next.type}`]);
+        await q.lock(`creaboard:type_no:${next.type}`);
         typeNo = (await q.one("select coalesce(max(type_no), 0)::int + 1 n from contents where type = ?", [next.type])).n;
       }
       await q.run(
@@ -302,7 +302,8 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
     const files = await db.tx(async (q) => {
       const c = await visibleContent(q, user, params.id, opts, true);
       if (!canDeleteContent(user, c, opts)) fail(403, "Hanya Leader Marketing, atau Marketing pemilik skrip yang belum diproduksi, yang dapat menghapus skrip");
-      const removed = await q.query("delete from footage where content_id = ? returning kind, file_path", [c.id]);
+      const removed = await q.query("select kind, file_path from footage where content_id = ? for update", [c.id]);
+      await q.run("delete from footage where content_id = ?", [c.id]);
       await q.run("delete from contents where id = ?", [c.id]);
       return removed.filter((f) => f.kind === "file");
     });
@@ -340,8 +341,8 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
         skipped += allowed ? 1 : 0;
         continue;
       }
-      const r = await db.one(
-        "insert into calendar_plans (app, type, date, amount, color) values (?, ?, ?, ?, ?) on conflict (app, type, date) do nothing returning app",
+      const r = await db.run(
+        "insert into calendar_plans (app, type, date, amount, color) values (?, ?, ?, ?, ?) on conflict (app, type, date) do nothing",
         [p.app, p.type, `${nextMonth}-${p.date.slice(8)}`, p.amount, p.color],
       );
       if (r) copied++;

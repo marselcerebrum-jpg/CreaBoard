@@ -3,8 +3,7 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { createApp } from "../server/app.js";
 import { hashPassword } from "../server/auth.js";
-import { PGlite } from "@electric-sql/pglite";
-import { fromPglite, migrate } from "../server/db.js";
+import { closeDb, testDb } from "./db.js";
 
 // Jam tetap: 10 Oktober 2026 pukul 10.00 WIB.
 const NOW = new Date("2026-10-10T03:00:00Z");
@@ -12,7 +11,7 @@ const TODAY = "2026-10-10";
 let server, base, db;
 
 before(async () => {
-  db = await migrate(fromPglite(await PGlite.create()));
+  db = await testDb("api");
   const add = (username, name, position, role) =>
     db.run("insert into users (username, name, position, role, password_hash) values (?, ?, ?, ?, ?)",
       [username, name, position, role, hashPassword("rahasia123")]);
@@ -35,7 +34,10 @@ before(async () => {
   await new Promise((r) => server.listen(0, r));
   base = `http://localhost:${server.address().port}`;
 });
-after(() => server.close());
+after(async () => {
+  server.close();
+  await closeDb();
+});
 
 async function login(username) {
   const res = await fetch(`${base}/api/login`, {

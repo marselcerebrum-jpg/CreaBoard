@@ -3,7 +3,7 @@
 Workspace Marketing × Creative: skrip (Video / Carrousel / Singlepost), worksheet produksi, QC, konfirmasi tayang, kalender rencana vs aktual, dan performa & target staff. Dibangun ulang dari prototipe `Content_Studio.html` — lihat [AUDIT.md](AUDIT.md) untuk temuan dan perbaikannya.
 
 - **Server:** Node.js ≥ 22.13 (satu dependensi: `pg`).
-- **Data:** PostgreSQL — di produksi memakai Postgres dari Supabase self-hosted (`supabase-content`) di VPS. Untuk pengembangan lokal tanpa `DATABASE_URL`, server memakai PGlite (Postgres in-process) di `data/pglite`.
+- **Data:** MySQL 8 (mis. Google Cloud SQL, dikelola lewat phpMyAdmin) atau PostgreSQL — dipilih dari awalan `DATABASE_URL` (`mysql://` / `postgres://`). Untuk pengembangan lokal tanpa `DATABASE_URL`, server memakai PGlite (Postgres in-process) di `data/pglite`.
 - **Akses:** lewat browser; bisa di-*install* sebagai aplikasi (PWA) dari Chrome/Edge. Produksi: https://creaboard.marseltech.cloud
 
 ## Menjalankan
@@ -53,7 +53,8 @@ Untuk mengosongkan data lokal: hentikan server, hapus folder `data/`, lalu jalan
 |---|---|---|
 | `PORT` | `3000` | Port HTTP |
 | `HOST` | `0.0.0.0` | Alamat yang didengarkan (`127.0.0.1` = hanya komputer ini) |
-| `DATABASE_URL` | – | Koneksi Postgres, mis. `postgres://creaboard_app:…@db:5433/postgres`. Kosong = PGlite lokal |
+| `DATABASE_URL` | – | `mysql://user:…@host:3306/marsel_creative_desk` (MySQL 8) atau `postgres://…` (Postgres). Kosong = PGlite lokal |
+| `DB_SSL_CA_FILE` | – | File sertifikat CA server MySQL (PEM) bila terhubung langsung lewat IP publik dengan SSL |
 | `PGLITE_DIR` | `data/pglite` | Lokasi database PGlite (hanya bila `DATABASE_URL` kosong) |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` / `ADMIN_NAME` | `leader` / acak / `Leader` | Akun Leader pertama (hanya saat database kosong) |
 | `SECURE_COOKIES` | – | Isi `1` bila diakses lewat HTTPS |
@@ -78,7 +79,9 @@ Update: `cd /opt/creaboard && git pull && docker compose up -d --build`.
 
 ## Operasional
 
-- **Backup:** data ada di schema `creaboard` pada Postgres `supabase-content` — ikut backup database Supabase, atau `pg_dump -n creaboard`. File footage ada di volume Docker `creaboard_uploads`.
+- **Backup:** MySQL — ikut backup otomatis Cloud SQL / ekspor dari phpMyAdmin. Postgres — `pg_dump -n creaboard`. File footage ada di volume Docker `creaboard_uploads`.
+- **Pindah Postgres → MySQL:** `SOURCE_DATABASE_URL=postgres://… DATABASE_URL=mysql://… node scripts/pg-to-mysql.js` — Postgres hanya dibaca, MySQL tujuan harus kosong, setiap tabel dicocokkan setelah disalin.
+- **Tes terhadap MySQL:** `TEST_MYSQL_URL=mysql://root:…@host:3306 npm test` (membuat database `cd_test_*` sendiri).
 - **Log:** `docker logs creaboard`.
 
 ## Struktur
@@ -86,7 +89,7 @@ Update: `cd /opt/creaboard && git pull && docker compose up -d --build`.
 ```
 server/   index.js (entry) · app.js (API) · rules.js (aturan alur & izin) · auth.js · db.js
 public/   index.html · styles.css · js/ (core, main, worksheet, editor, calendar, team, settings, footage)
-scripts/  seed-demo.js
+scripts/  seed-demo.js · pg-to-mysql.js
 tests/    api.test.js · features.test.js   →  npm test
 ```
 

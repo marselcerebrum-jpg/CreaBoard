@@ -4,17 +4,17 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PGlite } from "@electric-sql/pglite";
 import { createApp } from "../server/app.js";
 import { hashPassword } from "../server/auth.js";
-import { fromPglite, migrate } from "../server/db.js";
+import { migrate } from "../server/db.js";
+import { closeDb, testDb } from "./db.js";
 import { isDate } from "../server/rules.js";
 
 const NOW = new Date("2026-10-10T03:00:00Z");
 let server, base, db, uploadDir, O;
 
 before(async () => {
-  db = await migrate(fromPglite(await PGlite.create()));
+  db = await testDb("audit");
   uploadDir = `${await mkdtemp(join(tmpdir(), "creaboard-audit-"))}/`; // sengaja berakhiran "/"
   const people = [
     ["lm", "Alya", "Leader", "Marketing"], ["lc", "Bima", "Leader", "Creative"],
@@ -30,6 +30,7 @@ before(async () => {
 });
 after(async () => {
   server.close();
+  await closeDb();
   await rm(uploadDir, { recursive: true, force: true });
 });
 
@@ -129,7 +130,8 @@ test("audit 2: ganti jenis ke nomor yang sudah dipakai, skrip lama tanpa type/me
   await db.run("update contents set type_no = ? where id = ?", [maxCar + 50, v.id]);
   await mk.call("POST", "/api/contents", { type: "Carousel", app: apps()[0], sheet: sheet("Carousel", "Carousel x") });
   const cur = (await mk.call("GET", `/api/contents/${v.id}`)).data;
-  await db.run("update contents set type_no = (select max(type_no) from contents where type = 'Carousel') where id = ?", [v.id]);
+  const maxCar2 = (await db.one("select max(type_no) n from contents where type = 'Carousel'")).n;
+  await db.run("update contents set type_no = ? where id = ?", [maxCar2, v.id]);
   const fresh = (await mk.call("GET", `/api/contents/${v.id}`)).data;
   const r = await mk.call("PATCH", `/api/contents/${v.id}`, { revision: fresh.revision, changes: { type: "Carousel", sheet: sheet("Carousel", "Jadi carousel") } });
   assert.equal(r.status, 200, JSON.stringify(r.data));

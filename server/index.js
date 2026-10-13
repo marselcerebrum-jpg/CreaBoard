@@ -1,16 +1,24 @@
 // Entry point: `npm start`. Konfigurasi lewat environment variable (lihat README).
 import { randomBytes } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 import { hashPassword } from "./auth.js";
 import { createApp } from "./app.js";
-import { fromPglite, fromPool, migrate } from "./db.js";
+import { createMysqlPool, fromMysql, fromPglite, fromPool, migrate } from "./db.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-/** Produksi: DATABASE_URL (Postgres/Supabase). Lokal tanpa DATABASE_URL: PGlite di data/pglite. */
+/** Produksi: DATABASE_URL (mysql://… atau postgres://…). Lokal tanpa DATABASE_URL: PGlite di data/pglite. */
 export async function connect() {
+  if (/^mysql:/i.test(process.env.DATABASE_URL ?? "")) {
+    const pool = await createMysqlPool(process.env.DATABASE_URL, {
+      connectionLimit: Number(process.env.DB_POOL_SIZE ?? 10),
+      // DB_SSL_CA_FILE: sertifikat server (PEM) bila terhubung langsung lewat IP publik dengan SSL.
+      ssl: process.env.DB_SSL_CA_FILE ? { ca: readFileSync(process.env.DB_SSL_CA_FILE, "utf8") } : undefined,
+    });
+    return { db: await migrate(fromMysql(pool)), close: () => pool.end() };
+  }
   if (process.env.DATABASE_URL) {
     const { default: pg } = await import("pg");
     const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: Number(process.env.DB_POOL_SIZE ?? 10) });

@@ -4,16 +4,15 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PGlite } from "@electric-sql/pglite";
 import { createApp } from "../server/app.js";
 import { hashPassword } from "../server/auth.js";
-import { fromPglite, migrate } from "../server/db.js";
+import { closeDb, testDb } from "./db.js";
 
 const NOW = new Date("2026-10-10T03:00:00Z");
 let server, base, db, uploadDir, O;
 
 before(async () => {
-  db = await migrate(fromPglite(await PGlite.create()));
+  db = await testDb("features");
   uploadDir = await mkdtemp(join(tmpdir(), "creaboard-up-"));
   for (const [u, n, p, r] of [["leader", "Alya", "Leader", "Marketing"], ["nadia", "Nadia", "Staff", "Marketing"], ["dimas", "Dimas", "Staff", "Creative"]]) {
     await db.run("insert into users (username, name, position, role, password_hash) values (?, ?, ?, ?, ?)", [u, n, p, r, hashPassword("rahasia123")]);
@@ -27,6 +26,7 @@ before(async () => {
 });
 after(async () => {
   server.close();
+  await closeDb();
   await rm(uploadDir, { recursive: true, force: true });
 });
 

@@ -1,6 +1,6 @@
-// Lapisan database Postgres. Produksi: node-postgres (Supabase self-hosted di VPS).
-// Tes: PGlite (Postgres in-process). Keduanya dibungkus API yang sama:
-//   query(sql, params) → rows · one(sql, params) → row | null · run(sql, params) → jumlah baris · tx(fn)
+// Lapisan database. Produksi: MySQL 8 (mysql2) atau Postgres (node-postgres).
+// Tes/lokal: PGlite (Postgres in-process). Semuanya dibungkus API yang sama:
+//   query(sql, params) → rows · one(sql, params) → row | null · run(sql, params) → jumlah baris · tx(fn) · lock(nama)
 // Placeholder ditulis "?" dan diubah menjadi $1, $2, … oleh pembungkus.
 
 const TS_DEFAULT = `to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`;
@@ -146,6 +146,159 @@ alter table options add constraint options_key_check check (key in ('app','talen
 alter table users add column if not exists editor integer;
 `;
 
+// Skema yang sama untuk MySQL 8 (Cloud SQL). Tanggal disimpan sebagai teks ISO seperti di Postgres.
+const TS_MYSQL = `(concat(left(date_format(utc_timestamp(3), '%Y-%m-%dT%H:%i:%s.%f'), 23), 'Z'))`;
+const TBL = "engine=InnoDB default charset=utf8mb4 collate=utf8mb4_0900_ai_ci";
+
+const MYSQL_SCHEMA = `
+create table if not exists users (
+  id            int auto_increment primary key,
+  username      varchar(100) not null,
+  name          varchar(200) not null,
+  position      varchar(10) not null check (position in ('Leader','Staff')),
+  role          varchar(20) not null check (role in ('Marketing','Creative','Talent')),
+  password_hash varchar(255) not null,
+  active        int not null default 1,
+  created_at    varchar(30) not null default ${TS_MYSQL},
+  editor        int,
+  unique index users_username_lower ((lower(username)))
+) ${TBL};
+
+create table if not exists sessions (
+  token_hash varchar(64) primary key,
+  user_id    int not null,
+  expires_at varchar(30) not null,
+  index sessions_user_idx (user_id),
+  foreign key (user_id) references users(id) on delete cascade
+) ${TBL};
+
+create table if not exists options (
+  id       varchar(64) primary key,
+  \`key\`  varchar(20) not null check (\`key\` in ('app','talentName','script','talent','creative','qc','priority')),
+  label    varchar(255) not null,
+  semantic varchar(50) not null default '',
+  sort     int not null default 0,
+  archived int not null default 0,
+  category varchar(255)
+) ${TBL};
+
+create table if not exists contents (
+  id                int auto_increment primary key,
+  title             text not null,
+  app               varchar(64) not null,
+  type              varchar(20) not null check (type in ('Video','Carousel','Singlepost')),
+  created_date      varchar(30) not null,
+  upload_date       varchar(30) not null,
+  script_status     varchar(64) not null,
+  talent_status     varchar(64),
+  talent_name       varchar(64),
+  creative_status   varchar(64) not null,
+  qc_status         varchar(64) not null,
+  link              text not null default (''),
+  notes             text not null default (''),
+  sheet             longtext not null default ('{}'),
+  marketing_user_id int,
+  creative_user_id  int,
+  script_ready_at   varchar(30),
+  talent_done_at    varchar(30),
+  creative_done_at  varchar(30),
+  link_at           varchar(30),
+  qc_at             varchar(30),
+  published_url     text,
+  published_date    varchar(30),
+  published_by      int,
+  archived          int not null default 0,
+  revision          int not null default 1,
+  created_at        varchar(30) not null default ${TS_MYSQL},
+  updated_at        varchar(30) not null default ${TS_MYSQL},
+  type_no           int,
+  priority          varchar(64) not null default 'Reguler',
+  index contents_upload_idx (upload_date),
+  index contents_created_idx (created_date),
+  unique index contents_type_no_uq (type, type_no),
+  foreign key (app) references options(id),
+  foreign key (script_status) references options(id),
+  foreign key (talent_status) references options(id),
+  foreign key (talent_name) references options(id),
+  foreign key (creative_status) references options(id),
+  foreign key (qc_status) references options(id),
+  foreign key (marketing_user_id) references users(id),
+  foreign key (creative_user_id) references users(id),
+  foreign key (published_by) references users(id)
+) ${TBL};
+
+create table if not exists events (
+  id         int auto_increment primary key,
+  content_id int not null,
+  user_id    int,
+  field      varchar(64) not null,
+  from_value longtext,
+  to_value   longtext,
+  at         varchar(30) not null default ${TS_MYSQL},
+  index events_content_idx (content_id, at),
+  foreign key (content_id) references contents(id) on delete cascade,
+  foreign key (user_id) references users(id)
+) ${TBL};
+
+create table if not exists calendar_plans (
+  app    varchar(64) not null,
+  type   varchar(20) not null,
+  date   varchar(10) not null,
+  amount int,
+  color  varchar(30),
+  primary key (app, type, date),
+  index calendar_plans_date_idx (date)
+) ${TBL};
+
+create table if not exists user_apps (
+  user_id int not null,
+  app     varchar(64) not null,
+  primary key (user_id, app),
+  foreign key (user_id) references users(id) on delete cascade,
+  foreign key (app) references options(id)
+) ${TBL};
+
+create table if not exists footage (
+  id          int auto_increment primary key,
+  content_id  int,
+  app         varchar(64) not null,
+  type        varchar(20) not null check (type in ('Video','Carousel','Singlepost')),
+  kind        varchar(10) not null check (kind in ('file','link')),
+  title       text not null,
+  url         text,
+  file_path   varchar(500),
+  mime        varchar(100),
+  size        bigint,
+  uploaded_by int,
+  created_at  varchar(30) not null default ${TS_MYSQL},
+  index footage_scope_idx (app, type),
+  index footage_content_idx (content_id),
+  foreign key (content_id) references contents(id) on delete set null,
+  foreign key (app) references options(id),
+  foreign key (uploaded_by) references users(id)
+) ${TBL};
+
+create table if not exists drive_folders (
+  app  varchar(64) not null,
+  type varchar(20) not null check (type in ('Video','Carousel','Singlepost')),
+  url  text not null,
+  primary key (app, type),
+  foreign key (app) references options(id)
+) ${TBL};
+
+create table if not exists kpis (
+  id          int auto_increment primary key,
+  user_id     int not null,
+  app         varchar(64) not null,
+  type        varchar(20) not null check (type in ('Video','Carousel','Singlepost')),
+  work_date   varchar(10) not null,
+  upload_date varchar(10) not null,
+  amount      int not null check (amount > 0),
+  unique index kpis_uq (user_id, app, type, work_date),
+  foreign key (user_id) references users(id) on delete cascade
+) ${TBL};
+`;
+
 // Kategori proses tetap; label dapat diganti Leader di Setting.
 const DEFAULT_OPTIONS = {
   app: ["JadiASN", "JadiSEKDIN", "JadiBUMN", "JadiPCPM", "JadiPrajurit", "JadiPolisi", "JadiBeasiswa", "Cerebrum", "JagoTPA", "TOEFL Academy"]
@@ -163,6 +316,28 @@ const toPositional = (sql) => {
   return sql.replace(/\?/g, () => `$${++i}`);
 };
 
+/**
+ * Kueri aplikasi ditulis dalam dialek Postgres; untuk MySQL beberapa bentuk diterjemahkan:
+ * `::int` dibuang, kolom `key` dikutip, `on conflict` → `insert ignore` / `on duplicate key update`,
+ * dan `insert … returning id` memakai insertId.
+ */
+function toMysql(sql) {
+  let out = sql
+    .replace(/::int\b/g, "")
+    .replace(/(^|[^\w`])((?:\w+\.)?)key\b/g, "$1$2`key`");
+  let returningId = false;
+  if (/\bon conflict\s*\([^)]*\)\s*do nothing/i.test(out)) {
+    out = out.replace(/\s*\bon conflict\s*\([^)]*\)\s*do nothing/i, "").replace(/^\s*insert\s+into\b/i, "insert ignore into");
+  }
+  out = out.replace(/\bon conflict\s*\([^)]*\)\s*do update set\b/i, "on duplicate key update").replace(/\bexcluded\.(\w+)/g, "values($1)");
+  if (/^\s*insert\b[\s\S]*\breturning\s+id\s*$/i.test(out)) {
+    out = out.replace(/\s*\breturning\s+id\s*$/i, "");
+    returningId = true;
+  }
+  if (/\breturning\b/i.test(out)) throw new Error("returning tidak didukung di MySQL: " + sql);
+  return { sql: out, returningId };
+}
+
 const noNested = () => {
   throw new Error("nested transaction");
 };
@@ -170,6 +345,7 @@ const noNested = () => {
 /** Membungkus objek yang punya query(text, params) → { rows, rowCount | affectedRows }. */
 function wrap(runner, txImpl) {
   const db = {
+    dialect: "pg",
     async query(sql, params = []) {
       return (await runner.query(toPositional(sql), params)).rows;
     },
@@ -183,6 +359,10 @@ function wrap(runner, txImpl) {
     async exec(sql) {
       if (runner.exec) await runner.exec(sql);
       else await runner.query(sql);
+    },
+    /** Kunci bernama sampai transaksi selesai (dipakai di dalam tx). */
+    async lock(name) {
+      await runner.query("select pg_advisory_xact_lock(hashtext($1))", [name]);
     },
     tx: txImpl,
   };
@@ -212,33 +392,97 @@ export function fromPglite(pglite) {
   return wrap(pglite, (fn) => pglite.transaction((t) => fn(wrap(t, noNested))));
 }
 
+/** MySQL 8 (mysql2/promise): pool atau satu koneksi. */
+function wrapMysql(conn, txImpl) {
+  const exec = async (sql, params) => {
+    const t = toMysql(sql);
+    const [res] = await conn.query(t.sql, params);
+    return { res, returningId: t.returningId };
+  };
+  const db = {
+    dialect: "mysql",
+    async query(sql, params = []) {
+      const { res, returningId } = await exec(sql, params);
+      if (returningId) return [{ id: res.insertId }];
+      return Array.isArray(res) ? res : [];
+    },
+    async one(sql, params = []) {
+      return (await db.query(sql, params))[0] ?? null;
+    },
+    async run(sql, params = []) {
+      const { res } = await exec(sql, params);
+      return res.affectedRows ?? 0;
+    },
+    async exec(sql) {
+      // Skrip skema: satu pernyataan per panggilan (tanpa multipleStatements).
+      for (const stmt of sql.split(/;\s*(?:\n|$)/).map((s) => s.replace(/^\s*--.*$/gm, "").trim()).filter(Boolean)) await conn.query(stmt);
+    },
+    async lock(name) {
+      const [[row]] = await conn.query("select get_lock(?, 15) ok", [name]);
+      if (Number(row?.ok) !== 1) throw new Error(`gagal mengunci ${name}`);
+    },
+    tx: txImpl,
+  };
+  return db;
+}
+
+/** Pool mysql2 dengan pengaturan yang dipakai aplikasi (angka sebagai number, isolasi read committed seperti Postgres). */
+export async function createMysqlPool(uri, extra = {}) {
+  const mysql = await import("mysql2/promise");
+  const pool = mysql.createPool({ uri, charset: "utf8mb4", decimalNumbers: true, dateStrings: true, supportBigNumbers: true, ...extra });
+  pool.pool.on("connection", (c) => c.query("set session transaction isolation level read committed"));
+  return pool;
+}
+
+export function fromMysql(pool) {
+  return wrapMysql(pool, async (fn) => {
+    const conn = await pool.getConnection();
+    try {
+      await conn.query("start transaction");
+      const out = await fn(wrapMysql(conn, noNested));
+      await conn.query("commit");
+      return out;
+    } catch (e) {
+      await conn.query("rollback").catch(() => {});
+      throw e;
+    } finally {
+      // Kunci get_lock() milik sesi, bukan transaksi: lepas setelah commit/rollback.
+      await conn.query("do release_all_locks()").catch(() => {});
+      conn.release();
+    }
+  });
+}
+
 /** Membuat tabel (idempoten) dan mengisi pilihan dropdown bawaan. */
 export async function migrate(db) {
-  await db.exec(SCHEMA);
+  if (db.dialect === "mysql") await db.exec(MYSQL_SCHEMA);
+  else await db.exec(SCHEMA);
   // Pembagian apps hanya berlaku untuk staff Marketing.
   await db.run("delete from user_apps where user_id in (select id from users where role <> 'Marketing' or position <> 'Staff')");
   await db.run("update options set category = label where category is null");
-  // Isi nomor per jenis untuk konten lama (urut id).
-  // Isi nomor per jenis untuk konten tanpa nomor (lanjut dari nomor terbesar), lalu rapikan nomor ganda.
-  await db.run(`update contents c set type_no = r.n from (
-      select id, (select coalesce(max(type_no), 0) from contents m where m.type = x.type)
-        + row_number() over (partition by type order by id) n
-      from contents x where type_no is null) r
-    where r.id = c.id`);
-  await db.run(`update contents c set type_no = r.n from (
-      select id, (select max(type_no) from contents m where m.type = d.type) + row_number() over (partition by type order by id) n
-      from (select id, type, row_number() over (partition by type, type_no order by id) dup from contents) d where dup > 1) r
-    where r.id = c.id`);
-  await db.exec("create unique index if not exists contents_type_no_uq on contents(type, type_no)");
+  if (db.dialect === "pg") {
+    // Isi nomor per jenis untuk konten tanpa nomor (lanjut dari nomor terbesar), lalu rapikan nomor ganda.
+    // (Hanya data lama Postgres; skema MySQL sudah dibuat dengan indeks unik sejak awal.)
+    await db.run(`update contents c set type_no = r.n from (
+        select id, (select coalesce(max(type_no), 0) from contents m where m.type = x.type)
+          + row_number() over (partition by type order by id) n
+        from contents x where type_no is null) r
+      where r.id = c.id`);
+    await db.run(`update contents c set type_no = r.n from (
+        select id, (select max(type_no) from contents m where m.type = d.type) + row_number() over (partition by type order by id) n
+        from (select id, type, row_number() over (partition by type, type_no order by id) dup from contents) d where dup > 1) r
+      where r.id = c.id`);
+    await db.exec("create unique index if not exists contents_type_no_uq on contents(type, type_no)");
+  }
   // Jenis skrip sebagai pilihan dropdown: isi bawaan, lalu konten lama ("Reguler"/"Trend"/"Urgent") dipindah ke id pilihan.
   if (!(await db.one("select 1 from options where key = 'priority' limit 1"))) {
     for (const [i, [label, semantic]] of DEFAULT_OPTIONS.priority.entries()) {
       await db.run("insert into options (id, key, label, semantic, sort, category) values (?, ?, ?, ?, ?, ?) on conflict (id) do nothing", [`priority:${i + 1}`, "priority", label, semantic, i, label]);
     }
   }
-  await db.run(`update contents c set priority = o.id from options o
-    where o.key = 'priority' and o.semantic = c.priority and c.priority not like 'priority:%'
-      and o.id = (select id from options x where x.key = 'priority' and x.semantic = c.priority order by archived, sort limit 1)`);
+  const pick = "o.key = 'priority' and o.semantic = c.priority and c.priority not like 'priority:%' and o.id = (select id from options x where x.key = 'priority' and x.semantic = c.priority order by archived, sort limit 1)";
+  if (db.dialect === "mysql") await db.run(`update contents c join options o on ${pick} set c.priority = o.id`);
+  else await db.run(`update contents c set priority = o.id from options o where ${pick}`);
   // Editor: staff Creative aktif tampil di dropdown Editor kecuali diatur lain.
   // (editor kosong = bawaan: staff Creative tampil sebagai editor; lihat kueri users di app.js)
   const { n } = await db.one("select count(*)::int n from options where key <> 'priority'");
