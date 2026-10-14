@@ -773,7 +773,7 @@ tr:hover td { background: #FDFDF5; }
 .scorecard td { padding: 8px 8px; }
 .scorecard .sc-tier, .scorecard .sc-final { width: 64px; }
 .scorecard thead th { position: static; background: var(--sage); color: var(--heading); font-weight: 700; text-transform: uppercase; font-size: 11px; letter-spacing: .3px; text-align: center; }
-.scorecard thead tr:first-child th:nth-child(2), .scorecard thead tr:first-child th:nth-child(3) { text-align: left; }
+.scorecard thead th.left { text-align: left; }
 .scorecard .num { text-align: right; font-variant-numeric: tabular-nums; }
 .scorecard thead .num { text-align: center; }
 .scorecard .sc-team { background: var(--forest); color: #fff; font-size: 15px; font-weight: 800; letter-spacing: .5px; text-align: center; padding: 0 16px; position: static; }

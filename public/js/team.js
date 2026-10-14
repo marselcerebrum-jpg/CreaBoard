@@ -1,5 +1,5 @@
 // Performa & Target: scorecard KPI per staff. Leader mengatur metrik, target, dan tier tiap staff langsung di tabelnya.
-import { $, api, prioSem, contentNo, delegate, errorText, esc, fmtDate, isLeader, optLabel, state, toast, typeLabel } from "./core.js";
+import { $, api, prioSem, contentNo, delegate, errorText, esc, fmtDate, isAdmin, isLeader, optLabel, state, toast, typeLabel } from "./core.js";
 
 let role = "";
 let month = "";
@@ -38,6 +38,8 @@ function scorecard(p, values) {
   const tiers = cfg.tiers;
   const ms = cfg.rows.map((r) => metric(r, p, values)).map((m) => ({ ...m, tier: tierOf(tiers, m.pct) }));
   const total = ms.reduce((n, m) => n + m.score, 0);
+  // Kolom divisi (mis. CREATIVE) hanya untuk Admin, yang melihat staff semua tim.
+  const division = isAdmin();
   const rows = ms.map((m, i) => {
     // Perspektif yang sama berturut-turut digabung (rowspan), seperti di spreadsheet.
     const first = i === 0 || ms[i - 1].perspective !== m.perspective;
@@ -47,7 +49,7 @@ function scorecard(p, values) {
       ? `<input class="sc-input" type="number" min="0" step="any" value="${m.actual ?? ""}" placeholder="isi" aria-label="Achievement ${esc(m.label)}" data-onchange="sc-value" data-user="${p.user.id}" data-row="${esc(m.id)}">${m.unit}`
       : m.actual == null ? "—" : `${numText(m.actual)}${m.unit}`;
     return `<tr>
-      ${i === 0 ? `<th class="sc-team" rowspan="${ms.length + 1}" scope="rowgroup">${esc(cfg.team)}</th>` : ""}
+      ${i === 0 && division ? `<th class="sc-team" rowspan="${ms.length + 1}" scope="rowgroup">${esc(cfg.team)}</th>` : ""}
       ${first ? `<td class="sc-persp" rowspan="${span}">${esc(m.perspective)}</td>` : ""}
       <td>${esc(m.label)}</td><td class="num">${numText(m.weight)}%</td><td class="num">${m.target ? `${numText(m.target)}${m.unit}` : "—"}</td>
       <td class="num">${actual}</td><td class="num">${pctText(m.pct)}</td><td class="num">${pctText(m.score)}</td>
@@ -55,7 +57,7 @@ function scorecard(p, values) {
       <td class="sc-final">${numText(m.tier.value)}</td></tr>`;
   }).join("");
   return `<div class="tablewrap sc-wrap"><table class="scorecard">
-    <thead><tr><th rowspan="2"></th><th rowspan="2">Perspektif</th><th rowspan="2">Metric indicator</th><th rowspan="2" class="num">Bobot (%)</th><th rowspan="2" class="num">Target</th><th rowspan="2" class="num">Achievement</th><th rowspan="2" class="num">% Pencapaian</th><th rowspan="2" class="num">Score</th><th colspan="${tiers.length}" class="sc-group">Scoring tier</th><th rowspan="2" class="sc-final-h">Hasil akhir</th></tr>
+    <thead><tr>${division ? '<th rowspan="2"></th>' : ""}<th rowspan="2" class="left">Perspektif</th><th rowspan="2" class="left">Metric indicator</th><th rowspan="2" class="num">Bobot (%)</th><th rowspan="2" class="num">Target</th><th rowspan="2" class="num">Achievement</th><th rowspan="2" class="num">% Pencapaian</th><th rowspan="2" class="num">Score</th><th colspan="${tiers.length}" class="sc-group">Scoring tier</th><th rowspan="2" class="sc-final-h">Hasil akhir</th></tr>
       <tr>${tiers.map((t) => `<th class="sc-tier-h">${numText(t.value)}</th>`).join("")}</tr></thead>
     <tbody>${rows}<tr class="sc-total"><td>Total</td><td></td><td class="num">${numText(ms.reduce((n, m) => n + m.weight, 0))}%</td><td colspan="3"></td><td class="num">${pctText(total)}</td><td colspan="${tiers.length + 1}"></td></tr></tbody>
   </table></div>`;
@@ -68,7 +70,7 @@ function editorHtml(p) {
   const ok = Math.abs(total - 100) < 0.001;
   return `<div class="sc-edit">
       <p class="sc-edit-note">Berlaku untuk <b>${esc(p.user.name)}</b> mulai <b>${monthName(month)}</b> dan bulan-bulan berikutnya sampai diubah lagi. Bulan sebelumnya tidak berubah.</p>
-      <div class="field" style="max-width:280px"><label for="scTeam">Nama di kolom kiri</label><input id="scTeam" maxlength="40" value="${esc(cfg.team)}"></div>
+      ${isAdmin() ? `<div class="field" style="max-width:280px"><label for="scTeam">Nama divisi (kolom kiri)</label><input id="scTeam" maxlength="40" value="${esc(cfg.team)}"></div>` : ""}
       <h3>Metrik & target</h3>
       <div class="tablewrap sc-edit-wrap"><table><thead><tr><th>Perspektif</th><th>Metric indicator</th><th>Sumber achievement</th><th>Bobot (%)</th><th>Target</th><th>Satuan</th><th></th></tr></thead><tbody>
         ${cfg.rows.map((r, i) => `<tr data-i="${i}">
