@@ -457,9 +457,7 @@ export function normalizeScorecard(input) {
     const weight = num(r.weight);
     if (!Number.isFinite(weight) || weight < 0 || weight > 100) fail(422, `Bobot "${label}" harus 0–100`);
     const target = num(r.target);
-    // Target kosong hanya untuk jumlah konten (= dari Target KPI bulan itu).
-    const auto = source.startsWith("done:");
-    if (target === null ? !auto : !Number.isFinite(target) || target <= 0) fail(422, `Target "${label}" harus angka lebih dari 0${auto ? " (atau kosong = dari Target KPI)" : ""}`);
+    if (target === null || !Number.isFinite(target) || target <= 0) fail(422, `Target "${label}" harus angka lebih dari 0`);
     let id = text(r.id, 40).replace(/[^\w-]/g, "") || `m${i + 1}`;
     while (ids.has(id)) id += "x";
     ids.add(id);

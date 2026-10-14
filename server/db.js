@@ -145,10 +145,13 @@ alter table options add constraint options_key_check check (key in ('app','talen
 -- Akun Creative yang muncul di dropdown Editor (diatur Leader di Setting → Atur dropdown).
 alter table users add column if not exists editor integer;
 
--- Scorecard KPI per tim (konfigurasi JSON diatur Leader) dan nilai Achievement manual per staff per bulan.
-create table if not exists scorecards (
-  role   text primary key check (role in ('Marketing','Creative')),
-  config text not null
+-- Scorecard KPI per staff (JSON diatur Leader), berlaku mulai bulan itu sampai diganti;
+-- nilai Achievement manual per staff per bulan.
+create table if not exists staff_scorecards (
+  user_id integer not null references users(id) on delete cascade,
+  month   text not null,
+  config  text not null,
+  primary key (user_id, month)
 );
 create table if not exists scorecard_values (
   user_id integer not null references users(id) on delete cascade,
@@ -311,9 +314,12 @@ create table if not exists kpis (
   foreign key (user_id) references users(id) on delete cascade
 ) ${TBL};
 
-create table if not exists scorecards (
-  role   varchar(20) primary key check (role in ('Marketing','Creative')),
-  config longtext not null
+create table if not exists staff_scorecards (
+  user_id int not null,
+  month   varchar(7) not null,
+  config  longtext not null,
+  primary key (user_id, month),
+  foreign key (user_id) references users(id) on delete cascade
 ) ${TBL};
 
 create table if not exists scorecard_values (
@@ -500,6 +506,12 @@ export async function migrate(db) {
         from (select id, type, row_number() over (partition by type, type_no order by id) dup from contents) d where dup > 1) r
       where r.id = c.id`);
     await db.exec("create unique index if not exists contents_type_no_uq on contents(type, type_no)");
+  }
+  // Scorecard per tim (versi awal) diganti scorecard per staff; tabel lama dibuang bila kosong.
+  try {
+    if (Number((await db.one("select count(*) n from scorecards")).n) === 0) await db.exec("drop table scorecards");
+  } catch {
+    // tabel lama tidak ada
   }
   // Jenis skrip sebagai pilihan dropdown: isi bawaan, lalu konten lama ("Reguler"/"Trend"/"Urgent") dipindah ke id pilihan.
   if (!(await db.one("select 1 from options where key = 'priority' limit 1"))) {

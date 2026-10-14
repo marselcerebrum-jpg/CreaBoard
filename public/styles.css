@@ -785,7 +785,6 @@ tr:hover td { background: #FDFDF5; }
 .scorecard .sc-total td { background: var(--mist); font-weight: 700; }
 .person-meta { color: var(--muted); }
 .scorecard .sc-input { width: 76px; padding: 4px 6px; text-align: right; font: inherit; border: 1px solid var(--line); border-radius: 6px; background: var(--sage-soft); }
-.sc-open { justify-content: end; margin-left: auto; }
 .sc-edit h3 { margin: 18px 0 4px; font-size: 15px; color: var(--heading); }
 .sc-edit-wrap { max-height: none; min-height: 0; border: 1px solid var(--line); border-radius: 10px; margin-top: 8px; }
 .sc-edit-wrap td { vertical-align: middle; }
@@ -797,3 +796,8 @@ tr:hover td { background: #FDFDF5; }
 .sc-edit-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; flex-wrap: wrap; }
 .sc-weight { font-weight: 700; color: var(--ok); }
 .sc-weight.bad { color: var(--danger); }
+.person-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: end; }
+.sc-edit { border: 1px solid var(--line); border-radius: 10px; padding: 14px; background: var(--bg); }
+.sc-edit-note { margin: 0 0 12px; padding: 10px 12px; border-radius: 8px; background: var(--warn-bg); border: 1px solid var(--warn-line); font-size: 13px; }
+.sc-edit-actions { display: flex; gap: 10px; align-items: center; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.sc-edit-actions .grow { flex: 1; }

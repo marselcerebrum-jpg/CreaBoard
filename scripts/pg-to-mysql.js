@@ -15,7 +15,7 @@ if (!SRC || !/^postgres/i.test(SRC) || !/^mysql:/i.test(DST ?? "")) {
 const TABLES = [
   ["users", "id"], ["options", "id"], ["sessions", "token_hash"], ["contents", "id"], ["events", "id"],
   ["calendar_plans", "app, type, date"], ["user_apps", "user_id, app"], ["footage", "id"],
-  ["drive_folders", "app, type"], ["kpis", "id"], ["scorecards", "role"], ["scorecard_values", "user_id, month, row_id"],
+  ["drive_folders", "app, type"], ["kpis", "id"], ["staff_scorecards", "user_id, month"], ["scorecard_values", "user_id, month, row_id"],
 ];
 
 const pgPool = new pg.Pool({ connectionString: SRC, max: 2 });
