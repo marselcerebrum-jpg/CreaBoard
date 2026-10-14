@@ -3,13 +3,34 @@ import { $, addDays, api, prioSem, contentNo, delegate, errorText, esc, fmtDate,
 
 let role = "";
 let month = "";
-const COLORS = ["#C62828", "#FF8F00", "#E0A800"];
 
-function card(label, value, target, color) {
-  const pct = target ? Math.round((value / target) * 100) : 0;
-  return `<div class="team-card"><label>${esc(label)}</label><strong style="color:${color}">${value}</strong>
-    <div class="track"><i style="width:${Math.min(100, pct)}%;background:${color}"></i></div>
-    <div class="team-card-foot"><span>Target: ${target}</span><b>${target ? `${pct}%` : "—"}</b></div></div>`;
+// Scorecard KPI: bobot tetap, target konten dari Target KPI bulan ini, SLA = persentase selesai tepat waktu.
+const SLA_TARGET = 95;
+const TIERS = [[5, ">100%"], [4, "96–100%"], [3, "91–96%"], [2, "81–90%"], [1, "<80%"]];
+const tierOf = (pct) => (pct > 100 ? 5 : pct >= 96 ? 4 : pct >= 91 ? 3 : pct >= 81 ? 2 : 1);
+const pctText = (n) => `${n.toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+
+function scorecard(p, role) {
+  const metrics = [
+    { label: "SLA Ticket", weight: 30, target: SLA_TARGET, actual: p.onTimeRate, unit: "%" },
+    { label: "Konten Video", weight: 40, target: p.byType.Video.target, actual: p.byType.Video.done },
+    { label: "Konten Carousel", weight: 30, target: p.byType.Carousel.target, actual: p.byType.Carousel.done },
+  ].map((m) => {
+    const pct = m.target && m.actual != null ? (m.actual / m.target) * 100 : 0;
+    return { ...m, pct, score: (pct * m.weight) / 100, tier: tierOf(pct) };
+  });
+  const total = metrics.reduce((n, m) => n + m.score, 0);
+  const rows = metrics.map((m, i) => `<tr>
+      ${i === 0 ? `<th class="sc-team" rowspan="${metrics.length + 1}" scope="rowgroup">${esc(role.toUpperCase())}</th><td class="sc-persp" rowspan="${metrics.length}">Content Performance</td>` : ""}
+      <td>${m.label}</td><td class="num">${m.weight}%</td><td class="num">${m.target ? `${m.target}${m.unit ?? ""}` : "—"}</td>
+      <td class="num">${m.actual == null ? "—" : `${m.actual}${m.unit ?? ""}`}</td><td class="num">${pctText(m.pct)}</td><td class="num">${pctText(m.score)}</td>
+      ${TIERS.map(([t, r]) => `<td class="sc-tier${t === m.tier ? " is-hit" : ""}">${r}</td>`).join("")}
+      <td class="sc-final">${m.tier}</td></tr>`).join("");
+  return `<div class="tablewrap sc-wrap"><table class="scorecard">
+    <thead><tr><th rowspan="2"></th><th rowspan="2">Perspektif</th><th rowspan="2">Metric indicator</th><th rowspan="2" class="num">Bobot (%)</th><th rowspan="2" class="num">Target</th><th rowspan="2" class="num">Achievement</th><th rowspan="2" class="num">% Pencapaian</th><th rowspan="2" class="num">Score</th><th colspan="5" class="sc-group">Scoring tier</th><th rowspan="2" class="sc-final-h">Hasil akhir</th></tr>
+      <tr>${TIERS.map(([t]) => `<th class="sc-tier-h">${t}</th>`).join("")}</tr></thead>
+    <tbody>${rows}<tr class="sc-total"><td>Total</td><td></td><td class="num">100%</td><td colspan="3"></td><td class="num">${pctText(total)}</td><td colspan="6"></td></tr></tbody>
+  </table></div>`;
 }
 
 /** Panel Target KPI: Leader mengatur target staff timnya untuk bulan yang dipilih. */
@@ -45,11 +66,9 @@ export async function renderTeam(root) {
     ${kpis ? kpiPanel(kpis) : ""}
     ${people.length ? people.map((p) => {
       const initials = p.user.name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
-      const cards = TYPES.map((t, i) => card(`${verb} ${typeLabel(t).toLowerCase()}`, p.byType[t].done, p.byType[t].target, COLORS[i])).join("")
-        + `<div class="team-card"><label>Tepat waktu (H-${days})</label><strong>${p.onTimeRate == null ? "—" : `${p.onTimeRate}%`}</strong></div>`
-        + `<div class="team-card"><label>Sisa target</label><strong>${p.remaining}</strong></div>`
-        + `<div class="team-card"><label>Telat</label><strong style="color:${p.late ? "#B71C1C" : "#2E1F17"}">${p.late}</strong></div>`;
-      return `<article class="person"><div class="person-head"><div class="person-id"><div class="avatar">${esc(initials)}</div><b>${esc(p.user.name)}</b></div></div><div class="team-cards">${cards}</div>
+      return `<article class="person"><div class="person-head"><div class="person-id"><div class="avatar">${esc(initials)}</div><b>${esc(p.user.name)}</b></div>
+          <div class="person-meta small">SLA = ${verb.toLowerCase()} selesai tepat waktu (H-${days}) · Sisa target ${p.remaining} · Telat <b style="color:${p.late ? "#B71C1C" : "inherit"}">${p.late}</b></div></div>
+        ${scorecard(p, role)}
         <details><summary>Rincian konten & ketepatan waktu</summary><div style="overflow:auto"><table><thead><tr><th>Konten</th><th>Jenis</th><th>Upload</th><th>Batas selesai</th><th>Selesai</th><th>Status</th></tr></thead>
         <tbody>${p.items.map((i) => `<tr><td><button class="number" data-action="detail" data-id="${i.id}">${esc(contentNo(i))}</button> ${esc(i.title)}${prioSem(i.priority) !== "Reguler" ? ` <span class="badge b-prio">${esc(optLabel(i.priority) || i.priority)}</span>` : ""}</td><td>${typeLabel(i.type)}</td><td>${fmtDate(i.upload_date)}</td><td>${fmtDate(i.deadline)}</td><td>${i.done ? fmtDate(i.done) : "Belum selesai"}</td><td>${esc(i.status)}</td></tr>`).join("") || '<tr><td colspan="6" class="small">Belum ada konten.</td></tr>'}</tbody></table></div></details></article>`;
     }).join("") : '<div class="panel" style="margin-top:18px">Belum ada anggota untuk tim ini.</div>'}`;

@@ -765,3 +765,22 @@ tr:hover td { background: #FDFDF5; }
 .editor-add-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: 12px; align-items: end; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: #FDFDF5; }
 .editor-add-form > p { grid-column: 1 / -1; margin: 0; }
 @media (max-width: 760px) { .editor-add-form { grid-template-columns: 1fr; } }
+
+/* Scorecard KPI (Performa & Target) */
+.sc-wrap { max-height: none; min-height: 0; border: 1px solid var(--line); border-radius: 10px; }
+.scorecard th, .scorecard td { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); vertical-align: middle; white-space: nowrap; }
+.scorecard thead th { white-space: normal; line-height: 1.25; padding: 8px 6px; }
+.scorecard td { padding: 8px 8px; }
+.scorecard .sc-tier, .scorecard .sc-final { width: 64px; }
+.scorecard thead th { position: static; background: var(--sage); color: var(--heading); font-weight: 700; text-transform: uppercase; font-size: 11px; letter-spacing: .3px; text-align: center; }
+.scorecard thead tr:first-child th:nth-child(2), .scorecard thead tr:first-child th:nth-child(3) { text-align: left; }
+.scorecard .num { text-align: right; font-variant-numeric: tabular-nums; }
+.scorecard thead .num { text-align: center; }
+.scorecard .sc-team { background: var(--forest); color: #fff; font-size: 15px; font-weight: 800; letter-spacing: .5px; text-align: center; padding: 0 16px; position: static; }
+.scorecard .sc-persp { background: var(--sage-soft); font-weight: 600; }
+.scorecard .sc-tier { text-align: center; color: var(--muted); }
+.scorecard .sc-tier.is-hit { background: var(--accent); color: #2B1600; font-weight: 700; }
+.scorecard .sc-final, .scorecard .sc-final-h { background: var(--sage-soft); text-align: center; font-weight: 800; font-size: 14px; color: var(--heading); }
+.scorecard .sc-final-h { font-size: 11px; background: var(--sage); }
+.scorecard .sc-total td { background: var(--mist); font-weight: 700; }
+.person-meta { color: var(--muted); }

@@ -150,7 +150,7 @@ alter table users add column if not exists editor integer;
 const TS_MYSQL = `(concat(left(date_format(utc_timestamp(3), '%Y-%m-%dT%H:%i:%s.%f'), 23), 'Z'))`;
 const TBL = "engine=InnoDB default charset=utf8mb4 collate=utf8mb4_0900_ai_ci";
 
-const MYSQL_SCHEMA = `
+export const MYSQL_SCHEMA = `
 create table if not exists users (
   id            int auto_increment primary key,
   username      varchar(100) not null,
