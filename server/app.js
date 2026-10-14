@@ -514,6 +514,8 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
     const name = String(body.name ?? "").trim();
     if (!/^[a-zA-Z0-9._-]{3,40}$/.test(username)) fail(422, "Username 3–40 karakter (huruf, angka, . _ -)");
     if (!name) fail(422, "Nama wajib diisi");
+    // Admin mencakup semua tim; kolom peran tetap diisi (Marketing) karena wajib di database.
+    if (body.position === "Admin") body.role = "Marketing";
     if (!POSITIONS.includes(body.position) || !["Marketing", "Creative", "Talent"].includes(body.role)) fail(422, "Posisi/peran tidak valid");
     if (body.position === "Admin" && !isAdmin(user)) fail(403, "Akun Admin hanya bisa dibuat oleh Admin");
     if (body.position !== "Staff" && body.role === "Talent") fail(422, `${body.position} hanya untuk Marketing atau Creative`);
@@ -553,6 +555,8 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
       role: ["Marketing", "Creative", "Talent"].includes(body.role) ? body.role : target.role,
       active: typeof body.active === "boolean" ? Number(body.active) : target.active,
     };
+    // Admin mencakup semua tim: peran diabaikan (tersimpan Marketing karena kolomnya wajib).
+    if (next.position === "Admin") next.role = "Marketing";
     if (next.position !== "Staff" && next.role === "Talent") fail(422, `${next.position} hanya untuk Marketing atau Creative`);
     if ((next.role !== target.role || next.position !== target.position) && (await db.one("select 1 from kpis where user_id = ? limit 1", [target.id]))) {
       fail(409, `${target.name} masih punya target KPI. Hapus targetnya dulu di Target KPI sebelum mengubah peran/posisi.`);

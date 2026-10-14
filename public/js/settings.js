@@ -178,6 +178,8 @@ function newUserApps() {
   const role = $("uRole").value;
   // Field apps hanya untuk staff Marketing; untuk Creative/Talent/Leader disembunyikan.
   $("uAppsField").classList.toggle("hidden", !hasApps(pos, role));
+  // Admin mencakup semua tim: tidak punya peran.
+  $("uRoleField").classList.toggle("hidden", pos === "Admin");
   $("uApps").innerHTML = manages(pos, role) ? appChips("newApps", []) : '<span class="muted-inline">Diatur Leader Marketing</span>';
 }
 
@@ -187,7 +189,7 @@ async function showUsers() {
       <div class="field"><label for="uName">Nama</label><input id="uName" required maxlength="100"></div>
       <div class="field"><label for="uUser">Username</label><input id="uUser" required pattern="[a-zA-Z0-9._\\-]{3,40}" autocomplete="off"></div>
       <div class="field"><label for="uPos">Posisi</label><select id="uPos" data-onchange="new-user-scope"><option>Staff</option><option>Leader</option>${isAdmin() ? "<option>Admin</option>" : ""}</select></div>
-      <div class="field"><label for="uRole">Peran</label><select id="uRole" data-onchange="new-user-scope"><option ${state.me.role === "Marketing" ? "selected" : ""}>Marketing</option><option ${state.me.role === "Creative" ? "selected" : ""}>Creative</option><option>Talent</option></select></div>
+      <div class="field" id="uRoleField"><label for="uRole">Peran</label><select id="uRole" data-onchange="new-user-scope"><option ${state.me.role === "Marketing" ? "selected" : ""}>Marketing</option><option ${state.me.role === "Creative" ? "selected" : ""}>Creative</option><option>Talent</option></select></div>
       <div class="field full" id="uAppsField"><label>Apps yang dipegang</label><div id="uApps"></div></div>
       <div class="field"><label for="uPass">Password awal (min. 8)</label><input id="uPass" type="text" minlength="8" required autocomplete="off"></div>
       <div class="field" style="justify-content:end"><button class="btn primary">Tambah akun</button></div></div></form>
@@ -202,7 +204,7 @@ async function showUsers() {
           : hasApps(u.position, u.role) ? esc(u.apps.map(optLabel).join(", ")) || '<span class="muted-inline">—</span>' : "";
         return `<tr><td><b>${esc(u.name)}</b><div class="t-meta">${esc(u.username)}</div></td>
         <td><select aria-label="Posisi ${esc(u.name)}" data-onchange="user-field" data-id="${u.id}" data-field="position" ${lock}><option ${u.position === "Staff" ? "selected" : ""}>Staff</option><option ${u.position === "Leader" ? "selected" : ""}>Leader</option>${isAdmin() || u.position === "Admin" ? `<option ${u.position === "Admin" ? "selected" : ""}>Admin</option>` : ""}</select></td>
-        <td><select aria-label="Peran ${esc(u.name)}" data-onchange="user-field" data-id="${u.id}" data-field="role" ${lock}><option ${u.role === "Marketing" ? "selected" : ""}>Marketing</option><option ${u.role === "Creative" ? "selected" : ""}>Creative</option><option ${u.role === "Talent" ? "selected" : ""}>Talent</option></select></td>
+        <td>${u.position === "Admin" ? '<span class="small">Semua tim</span>' : `<select aria-label="Peran ${esc(u.name)}" data-onchange="user-field" data-id="${u.id}" data-field="role" ${lock}><option ${u.role === "Marketing" ? "selected" : ""}>Marketing</option><option ${u.role === "Creative" ? "selected" : ""}>Creative</option><option ${u.role === "Talent" ? "selected" : ""}>Talent</option></select>`}</td>
         <td class="apps-cell">${appsCell}</td>
         <td>${u.id === state.me.id || otherLeader ? (u.active ? "Aktif" : "Nonaktif") : `<select aria-label="Status ${esc(u.name)}" data-onchange="user-field" data-id="${u.id}" data-field="active"><option value="1" ${u.active ? "selected" : ""}>Aktif</option><option value="0" ${u.active ? "" : "selected"}>Nonaktif</option></select>`}</td>
         <td>${otherLeader ? `<span class="small">${u.position === "Admin" ? "Admin" : "Leader lain"}</span>` : `<button class="btn mini" data-action="user-reset" data-id="${u.id}" data-name="${esc(u.name)}">Reset password</button>`}</td></tr>`;

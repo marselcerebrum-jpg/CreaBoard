@@ -70,7 +70,7 @@ export function optionTags(key, current, { blank, mine = false } = {}) {
 }
 
 export const userName = (id) => state.users.find((u) => u.id === id)?.name ?? "";
-export const usersByRole = (role) => state.users.filter((u) => u.role === role && u.active);
+export const usersByRole = (role) => state.users.filter((u) => u.role === role && u.active && u.position !== "Admin");
 /** Akun yang muncul di dropdown Editor (diatur Leader di Setting → Atur dropdown → Editor). */
 export const editors = () => state.users.filter((u) => u.role === "Creative" && u.active && u.editor);
 /** Arti proses jenis skrip (Reguler / Trend / Urgent) dari id pilihannya; nilai lama berupa teks tetap dikenali. */
