@@ -11,7 +11,7 @@ import {
 } from "./auth.js";
 import {
   actualCounts, addDays, applyWorkflow, canSee, contentFlags, DEADLINE_DAYS, defaultSheet, editableFields, fail, HttpError,
-  canDeleteContent, isDate, isHttpUrl, isLeader, jakartaDate, leads, manages, mergeFootage, normalizeSheet, optionIndex, performance, scriptReadyErrors, titleFromSheet, TYPES,
+  canDeleteContent, defaultScorecard, isDate, isHttpUrl, isLeader, normalizeScorecard, jakartaDate, leads, manages, mergeFootage, normalizeSheet, optionIndex, performance, scriptReadyErrors, titleFromSheet, TYPES,
 } from "./rules.js";
 
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
@@ -401,7 +401,50 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
     if (user.role === "Talent") fail(403, "Performa tersedia untuk Marketing dan Creative");
     const month = monthOf(query);
     const all = await db.query("select id, name, position, role, active from users");
-    return { month, today: today(), people: await performance(db, await optionIndex(db), all, month, today(), user) };
+    const people = await performance(db, await optionIndex(db), all, month, today(), user);
+    const ids = people.map((p) => p.user.id);
+    const values = ids.length
+      ? await db.query(`select user_id, row_id, value from scorecard_values where month = ? and user_id in (${ids.map(() => "?").join(", ")})`, [month, ...ids])
+      : [];
+    return { month, today: today(), people, scorecard: await scorecardOf(user.role), values };
+  });
+
+  // Scorecard KPI: Leader mengatur metrik, bobot, target, dan tier untuk timnya sendiri.
+  const scorecardOf = async (role) => {
+    const row = await db.one("select config from scorecards where role = ?", [role]);
+    try {
+      return row ? JSON.parse(row.config) : defaultScorecard(role);
+    } catch {
+      return defaultScorecard(role);
+    }
+  };
+
+  route("PUT", "/api/scorecard", async ({ user, body }) => {
+    requireLeader(user);
+    if (user.role === "Talent") fail(403, "Scorecard tersedia untuk tim Marketing dan Creative");
+    if (body.reset) {
+      await db.run("delete from scorecards where role = ?", [user.role]);
+      return defaultScorecard(user.role);
+    }
+    const config = normalizeScorecard(body.config);
+    await db.run("insert into scorecards (role, config) values (?, ?) on conflict (role) do update set config = excluded.config", [user.role, JSON.stringify(config)]);
+    return config;
+  });
+
+  route("PUT", "/api/scorecard/value", async ({ user, body }) => {
+    requireLeader(user);
+    const staff = await db.one("select id from users where id = ? and position = 'Staff' and role = ?", [Number(body.user_id) || 0, user.role]);
+    if (!staff) fail(422, "Nilai hanya bisa diisi untuk staff tim Anda");
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(body.month ?? "")) fail(422, "Bulan tidak valid");
+    const row = (await scorecardOf(user.role)).rows.find((r) => r.id === body.row_id);
+    if (row?.source !== "manual") fail(422, "Metrik ini dihitung otomatis");
+    const value = body.value === "" || body.value == null ? null : Number(body.value);
+    if (value === null) await db.run("delete from scorecard_values where user_id = ? and month = ? and row_id = ?", [staff.id, body.month, row.id]);
+    else if (!Number.isFinite(value) || value < 0) fail(422, "Achievement harus angka 0 atau lebih");
+    else
+      await db.run(`insert into scorecard_values (user_id, month, row_id, value) values (?, ?, ?, ?)
+                    on conflict (user_id, month, row_id) do update set value = excluded.value`, [staff.id, body.month, row.id, value]);
+    return { ok: true };
   });
 
   route("GET", "/api/kpis", async ({ user, query }) => {

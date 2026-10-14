@@ -784,3 +784,16 @@ tr:hover td { background: #FDFDF5; }
 .scorecard .sc-final-h { font-size: 11px; background: var(--sage); }
 .scorecard .sc-total td { background: var(--mist); font-weight: 700; }
 .person-meta { color: var(--muted); }
+.scorecard .sc-input { width: 76px; padding: 4px 6px; text-align: right; font: inherit; border: 1px solid var(--line); border-radius: 6px; background: var(--sage-soft); }
+.sc-open { justify-content: end; margin-left: auto; }
+.sc-edit h3 { margin: 18px 0 4px; font-size: 15px; color: var(--heading); }
+.sc-edit-wrap { max-height: none; min-height: 0; border: 1px solid var(--line); border-radius: 10px; margin-top: 8px; }
+.sc-edit-wrap td { vertical-align: middle; }
+.sc-edit-wrap input, .sc-edit-wrap select { width: 100%; min-width: 80px; }
+.sc-edit-wrap input[data-f="label"], .sc-edit-wrap input[data-f="perspective"] { min-width: 160px; }
+.sc-edit-wrap select[data-f="source"] { min-width: 230px; }
+.sc-row-tools { white-space: nowrap; }
+.sc-row-tools .btn + .btn { margin-left: 4px; }
+.sc-edit-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; flex-wrap: wrap; }
+.sc-weight { font-weight: 700; color: var(--ok); }
+.sc-weight.bad { color: var(--danger); }

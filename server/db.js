@@ -144,6 +144,19 @@ alter table options drop constraint if exists options_key_check;
 alter table options add constraint options_key_check check (key in ('app','talentName','script','talent','creative','qc','priority'));
 -- Akun Creative yang muncul di dropdown Editor (diatur Leader di Setting → Atur dropdown).
 alter table users add column if not exists editor integer;
+
+-- Scorecard KPI per tim (konfigurasi JSON diatur Leader) dan nilai Achievement manual per staff per bulan.
+create table if not exists scorecards (
+  role   text primary key check (role in ('Marketing','Creative')),
+  config text not null
+);
+create table if not exists scorecard_values (
+  user_id integer not null references users(id) on delete cascade,
+  month   text not null,
+  row_id  text not null,
+  value   double precision not null,
+  primary key (user_id, month, row_id)
+);
 `;
 
 // Skema yang sama untuk MySQL 8 (Cloud SQL). Tanggal disimpan sebagai teks ISO seperti di Postgres.
@@ -295,6 +308,20 @@ create table if not exists kpis (
   upload_date varchar(10) not null,
   amount      int not null check (amount > 0),
   unique index kpis_uq (user_id, app, type, work_date),
+  foreign key (user_id) references users(id) on delete cascade
+) ${TBL};
+
+create table if not exists scorecards (
+  role   varchar(20) primary key check (role in ('Marketing','Creative')),
+  config longtext not null
+) ${TBL};
+
+create table if not exists scorecard_values (
+  user_id int not null,
+  month   varchar(7) not null,
+  row_id  varchar(40) not null,
+  value   double not null,
+  primary key (user_id, month, row_id),
   foreign key (user_id) references users(id) on delete cascade
 ) ${TBL};
 `;

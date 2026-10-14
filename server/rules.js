@@ -422,3 +422,60 @@ export async function actualCounts(db, opts, from, to) {
   }
   return out;
 }
+
+// ───────────── scorecard KPI (diatur Leader per tim) ─────────────
+/** Sumber "Achievement": dihitung otomatis dari data konten, atau diisi manual oleh Leader per staff per bulan. */
+export const SCORE_SOURCES = ["sla", "done:all", "done:Video", "done:Carousel", "done:Singlepost", "manual"];
+
+export function defaultScorecard(role) {
+  const row = (id, label, weight, source, target) => ({ id, perspective: "Content Performance", label, weight, source, target, unit: "" });
+  return {
+    team: role.toUpperCase(),
+    rows: [row("sla", "SLA Ticket", 30, "sla", 95), row("video", "Konten Video", 40, "done:Video", null), row("carousel", "Konten Carousel", 30, "done:Carousel", null)],
+    tiers: [
+      { value: 5, min: 100.01, label: ">100%" }, { value: 4, min: 96, label: "96–100%" }, { value: 3, min: 91, label: "91–96%" },
+      { value: 2, min: 81, label: "81–90%" }, { value: 1, min: 0, label: "<80%" },
+    ],
+  };
+}
+
+const num = (v) => (v === "" || v == null ? null : Number(v));
+const text = (v, max) => String(v ?? "").trim().slice(0, max);
+
+/** Validasi & rapikan konfigurasi scorecard dari Leader. */
+export function normalizeScorecard(input) {
+  const c = input && typeof input === "object" ? input : {};
+  const team = text(c.team, 40);
+  if (!team) fail(422, "Nama tim/scorecard perlu diisi");
+  const rows = Array.isArray(c.rows) ? c.rows : [];
+  if (!rows.length || rows.length > 20) fail(422, "Scorecard perlu 1–20 metrik");
+  const ids = new Set();
+  const outRows = rows.map((r, i) => {
+    const label = text(r?.label, 120);
+    if (!label) fail(422, `Nama metrik baris ${i + 1} perlu diisi`);
+    const source = SCORE_SOURCES.includes(r.source) ? r.source : fail(422, `Sumber data "${label}" tidak valid`);
+    const weight = num(r.weight);
+    if (!Number.isFinite(weight) || weight < 0 || weight > 100) fail(422, `Bobot "${label}" harus 0–100`);
+    const target = num(r.target);
+    // Target kosong hanya untuk jumlah konten (= dari Target KPI bulan itu).
+    const auto = source.startsWith("done:");
+    if (target === null ? !auto : !Number.isFinite(target) || target <= 0) fail(422, `Target "${label}" harus angka lebih dari 0${auto ? " (atau kosong = dari Target KPI)" : ""}`);
+    let id = text(r.id, 40).replace(/[^\w-]/g, "") || `m${i + 1}`;
+    while (ids.has(id)) id += "x";
+    ids.add(id);
+    return { id, perspective: text(r.perspective, 80), label, weight, source, target, unit: source === "manual" && r.unit === "%" ? "%" : "" };
+  });
+  const total = outRows.reduce((n, r) => n + r.weight, 0);
+  if (Math.abs(total - 100) > 0.001) fail(422, `Total bobot harus 100% (sekarang ${Math.round(total * 100) / 100}%)`);
+  const tiers = (Array.isArray(c.tiers) ? c.tiers : []).map((t, i) => {
+    const value = num(t?.value);
+    const min = num(t?.min);
+    if (!Number.isFinite(value) || !Number.isFinite(min) || min < 0) fail(422, `Tier baris ${i + 1}: nilai dan batas minimal harus angka`);
+    return { value, min, label: text(t.label, 30) || `≥${min}%` };
+  });
+  if (tiers.length < 2 || tiers.length > 10) fail(422, "Scoring tier perlu 2–10 tingkat");
+  tiers.sort((a, b) => b.min - a.min);
+  if (new Set(tiers.map((t) => t.min)).size !== tiers.length) fail(422, "Batas minimal tiap tier harus berbeda");
+  tiers[tiers.length - 1].min = 0; // tier terendah menampung semua pencapaian di bawahnya
+  return { team, rows: outRows, tiers };
+}

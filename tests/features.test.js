@@ -261,3 +261,45 @@ test("hapus skrip: permanen (riwayat & file footage ikut terhapus), hanya Leader
   assert.equal((await mk.call("DELETE", `/api/contents/${c.id}`, {})).status, 403);
   assert.equal((await lm.call("DELETE", `/api/contents/${c.id}`, {})).status, 200);
 });
+
+test("scorecard: Leader mengatur metrik, bobot harus 100%, nilai manual per staff", async () => {
+  const lm = await login("leader");
+  const mk = await login("nadia");
+  const dimas = await login("dimas");
+  const nadiaId = (await db.one("select id from users where username = 'nadia'")).id;
+  const dimasId = (await db.one("select id from users where username = 'dimas'")).id;
+  // Bawaan: SLA 30 / Video 40 / Carousel 30, 5 tier.
+  let team = (await lm.call("GET", "/api/team?month=2026-10")).data;
+  assert.deepEqual(team.scorecard.rows.map((r) => r.weight), [30, 40, 30]);
+  assert.equal(team.scorecard.tiers.length, 5);
+
+  const config = {
+    team: "MKT",
+    rows: [
+      { id: "sla", perspective: "Proses", label: "SLA", weight: 50, source: "sla", target: 90 },
+      { id: "eng", perspective: "Hasil", label: "Engagement", weight: 50, source: "manual", target: 1000, unit: "" },
+    ],
+    tiers: [{ value: 3, min: 100, label: "≥100%" }, { value: 2, min: 80, label: "80–99%" }, { value: 1, min: 10, label: "<80%" }],
+  };
+  assert.equal((await lm.call("PUT", "/api/scorecard", { config: { ...config, rows: [{ ...config.rows[0], weight: 40 }, config.rows[1]] } })).status, 422, "total bobot 90%");
+  assert.equal((await lm.call("PUT", "/api/scorecard", { config: { ...config, rows: [config.rows[0], { ...config.rows[1], target: null }] } })).status, 422, "manual wajib target");
+  assert.equal((await mk.call("PUT", "/api/scorecard", { config })).status, 403, "staff tidak boleh");
+  const saved = await lm.call("PUT", "/api/scorecard", { config });
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
+  assert.equal(saved.data.tiers.at(-1).min, 0, "tier terendah menampung semua");
+
+  // Nilai manual: hanya untuk metrik manual & staff tim sendiri.
+  assert.equal((await lm.call("PUT", "/api/scorecard/value", { user_id: nadiaId, month: "2026-10", row_id: "sla", value: 5 })).status, 422);
+  assert.equal((await lm.call("PUT", "/api/scorecard/value", { user_id: dimasId, month: "2026-10", row_id: "eng", value: 5 })).status, 422);
+  assert.equal((await lm.call("PUT", "/api/scorecard/value", { user_id: nadiaId, month: "2026-10", row_id: "eng", value: 850 })).status, 200);
+  assert.equal((await lm.call("PUT", "/api/scorecard/value", { user_id: nadiaId, month: "2026-10", row_id: "eng", value: 900 })).status, 200);
+  team = (await mk.call("GET", "/api/team?month=2026-10")).data;
+  assert.equal(team.scorecard.team, "MKT");
+  assert.deepEqual(team.values.map((v) => [v.row_id, Number(v.value)]), [["eng", 900]]);
+  // Tim Creative tetap memakai scorecard bawaannya sendiri.
+  assert.equal((await dimas.call("GET", "/api/team?month=2026-10")).data.scorecard.team, "CREATIVE");
+  // Hapus nilai & kembalikan bawaan.
+  assert.equal((await lm.call("PUT", "/api/scorecard/value", { user_id: nadiaId, month: "2026-10", row_id: "eng", value: null })).status, 200);
+  assert.equal((await lm.call("PUT", "/api/scorecard", { reset: true })).data.team, "MARKETING");
+  assert.equal((await mk.call("GET", "/api/team?month=2026-10")).data.values.length, 0);
+});
