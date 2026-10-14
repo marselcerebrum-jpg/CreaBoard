@@ -69,7 +69,7 @@ export async function optionIndex(db) {
 
 // ───────────── visibilitas & izin ─────────────
 export function canSee(user, c, opts) {
-  if (user.position === "Leader") return true;
+  if (isLeader(user)) return true;
   // Pembagian apps hanya untuk Marketing: staff Marketing melihat semua konten di apps yang dipegangnya.
   if (user.role === "Marketing" && user.apps?.includes(c.app)) return true;
   if (user.role === "Marketing") return c.marketing_user_id === user.id;
@@ -91,10 +91,13 @@ const MARKETING_FIELDS = [...DROPDOWN_FIELDS, "qc_status", "type", "created_date
 const CREATIVE_FIELDS = [...DROPDOWN_FIELDS, "link"];
 const TALENT_FIELDS = [...DROPDOWN_FIELDS, "notes"];
 
+// Admin berada di atas Leader: melihat dan melakukan semuanya, untuk semua tim.
 // Ada dua Leader: Leader Marketing dan Leader Creative. Keduanya melihat semua konten,
 // tetapi masing-masing memimpin bidangnya sendiri.
-export const isLeader = (user) => user?.position === "Leader";
-export const leads = (user, role) => isLeader(user) && user.role === role;
+export const POSITIONS = ["Admin", "Leader", "Staff"];
+export const isAdmin = (user) => user?.position === "Admin";
+export const isLeader = (user) => user?.position === "Leader" || isAdmin(user);
+export const leads = (user, role) => isAdmin(user) || (user?.position === "Leader" && user.role === role);
 /** Pembagian apps hanya di tim Marketing dan diatur Leader Marketing. */
 export const manages = (leader, target) => leads(leader, "Marketing") && target.position === "Staff" && target.role === "Marketing";
 
@@ -107,6 +110,7 @@ export function canDeleteContent(user, c, opts) {
 
 export function editableFields(user, c, opts) {
   if (!canSee(user, c, opts)) return [];
+  if (isAdmin(user)) return [...new Set([...MARKETING_FIELDS, "marketing_user_id", ...CREATIVE_FIELDS, ...TALENT_FIELDS])];
   if (leads(user, "Marketing")) return [...MARKETING_FIELDS, "marketing_user_id"];
   if (user.role === "Marketing") return MARKETING_FIELDS;
   if (leads(user, "Creative")) return [...CREATIVE_FIELDS, "notes"];
@@ -358,7 +362,7 @@ export async function performance(db, opts, users, month, today, viewer) {
   const kpis = await db.query("select * from kpis where upload_date between ? and ?", [from, to]);
   const staff = users.filter((u) => u.position === "Staff" && u.active && (u.role === "Marketing" || u.role === "Creative"));
   // Leader melihat staff timnya sendiri (Leader Marketing → staff Marketing, Leader Creative → staff Creative).
-  const visible = staff.filter((u) => (isLeader(viewer) ? u.role === viewer.role : u.id === viewer.id));
+  const visible = staff.filter((u) => (isAdmin(viewer) ? true : isLeader(viewer) ? u.role === viewer.role : u.id === viewer.id));
 
   return visible.map((u) => {
     const marketing = u.role === "Marketing";

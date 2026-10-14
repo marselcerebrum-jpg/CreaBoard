@@ -75,9 +75,11 @@ export const usersByRole = (role) => state.users.filter((u) => u.role === role &
 export const editors = () => state.users.filter((u) => u.role === "Creative" && u.active && u.editor);
 /** Arti proses jenis skrip (Reguler / Trend / Urgent) dari id pilihannya; nilai lama berupa teks tetap dikenali. */
 export const prioSem = (p) => opt(p)?.semantic || (["Reguler", "Trend", "Urgent"].includes(p) ? p : "Reguler");
-export const isLeader = () => state.me?.position === "Leader";
+/** Admin di atas Leader: memimpin semua tim. state.me.role untuk Admin = tim yang sedang ditampilkan. */
+export const isAdmin = () => state.me?.position === "Admin";
+export const isLeader = () => state.me?.position === "Leader" || isAdmin();
 /** Ada dua Leader: Leader Marketing dan Leader Creative. */
-export const leads = (role) => isLeader() && state.me.role === role;
+export const leads = (role) => isAdmin() || (state.me?.position === "Leader" && state.me.role === role);
 export const typeLabel = (t) => (t === "Carousel" ? "Carrousel" : t === "Singlepost" ? "Singlepost" : t);
 export const TYPES = ["Video", "Carousel", "Singlepost"];
 

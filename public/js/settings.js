@@ -1,12 +1,12 @@
 // Halaman Setting: akun & role + pembagian apps, dropdown (Leader), ganti password.
-import { $, api, delegate, errorText, esc, icon, isLeader, optionsFor, optLabel, state, toast } from "./core.js";
+import { $, api, delegate, errorText, esc, icon, isAdmin, isLeader, leads, optionsFor, optLabel, state, toast } from "./core.js";
 
 const head = (title) => `<h2 class="settings-title">${title}</h2>`;
 const body = (html) => ($("settingsBody").innerHTML = html);
 
 /** Pembagian apps hanya untuk staff Marketing dan diatur Leader Marketing. */
 const hasApps = (position, role) => position === "Staff" && role === "Marketing";
-const manages = (position, role) => isLeader() && state.me.role === "Marketing" && hasApps(position, role);
+const manages = (position, role) => leads("Marketing") && hasApps(position, role);
 const usersTitle = () => (state.me.role === "Marketing" ? "Akun, role & apps" : "Akun & role");
 
 const SECTIONS = {
@@ -186,7 +186,7 @@ async function showUsers() {
   body(`<form id="userForm" class="panel">${head("Tambah akun")}<div class="grid">
       <div class="field"><label for="uName">Nama</label><input id="uName" required maxlength="100"></div>
       <div class="field"><label for="uUser">Username</label><input id="uUser" required pattern="[a-zA-Z0-9._\\-]{3,40}" autocomplete="off"></div>
-      <div class="field"><label for="uPos">Posisi</label><select id="uPos" data-onchange="new-user-scope"><option>Staff</option><option>Leader</option></select></div>
+      <div class="field"><label for="uPos">Posisi</label><select id="uPos" data-onchange="new-user-scope"><option>Staff</option><option>Leader</option>${isAdmin() ? "<option>Admin</option>" : ""}</select></div>
       <div class="field"><label for="uRole">Peran</label><select id="uRole" data-onchange="new-user-scope"><option ${state.me.role === "Marketing" ? "selected" : ""}>Marketing</option><option ${state.me.role === "Creative" ? "selected" : ""}>Creative</option><option>Talent</option></select></div>
       <div class="field full" id="uAppsField"><label>Apps yang dipegang</label><div id="uApps"></div></div>
       <div class="field"><label for="uPass">Password awal (min. 8)</label><input id="uPass" type="text" minlength="8" required autocomplete="off"></div>
@@ -194,18 +194,18 @@ async function showUsers() {
     <div class="panel" style="margin-top:14px;overflow:auto"><table class="users-table"><thead><tr><th>Nama</th><th>Posisi</th><th>Peran</th><th>Apps</th><th>Status</th><th></th></tr></thead><tbody>
       ${users.map((u) => {
         const editableApps = manages(u.position, u.role);
-        // Akun sendiri: posisi/peran terkunci. Akun Leader lain hanya bisa diubah pemiliknya.
-        const otherLeader = u.position === "Leader" && u.id !== state.me.id;
+        // Akun sendiri: posisi/peran terkunci. Akun Leader lain & Admin hanya bisa diubah pemiliknya atau Admin.
+        const otherLeader = u.id !== state.me.id && !isAdmin() && (u.position === "Leader" || u.position === "Admin");
         const lock = u.id === state.me.id || otherLeader ? "disabled" : "";
         const appsCell = editableApps
           ? appChips("", u.apps, { userId: u.id })
           : hasApps(u.position, u.role) ? esc(u.apps.map(optLabel).join(", ")) || '<span class="muted-inline">—</span>' : "";
         return `<tr><td><b>${esc(u.name)}</b><div class="t-meta">${esc(u.username)}</div></td>
-        <td><select aria-label="Posisi ${esc(u.name)}" data-onchange="user-field" data-id="${u.id}" data-field="position" ${lock}><option ${u.position === "Staff" ? "selected" : ""}>Staff</option><option ${u.position === "Leader" ? "selected" : ""}>Leader</option></select></td>
+        <td><select aria-label="Posisi ${esc(u.name)}" data-onchange="user-field" data-id="${u.id}" data-field="position" ${lock}><option ${u.position === "Staff" ? "selected" : ""}>Staff</option><option ${u.position === "Leader" ? "selected" : ""}>Leader</option>${isAdmin() || u.position === "Admin" ? `<option ${u.position === "Admin" ? "selected" : ""}>Admin</option>` : ""}</select></td>
         <td><select aria-label="Peran ${esc(u.name)}" data-onchange="user-field" data-id="${u.id}" data-field="role" ${lock}><option ${u.role === "Marketing" ? "selected" : ""}>Marketing</option><option ${u.role === "Creative" ? "selected" : ""}>Creative</option><option ${u.role === "Talent" ? "selected" : ""}>Talent</option></select></td>
         <td class="apps-cell">${appsCell}</td>
         <td>${u.id === state.me.id || otherLeader ? (u.active ? "Aktif" : "Nonaktif") : `<select aria-label="Status ${esc(u.name)}" data-onchange="user-field" data-id="${u.id}" data-field="active"><option value="1" ${u.active ? "selected" : ""}>Aktif</option><option value="0" ${u.active ? "" : "selected"}>Nonaktif</option></select>`}</td>
-        <td>${otherLeader ? '<span class="small">Leader lain</span>' : `<button class="btn mini" data-action="user-reset" data-id="${u.id}" data-name="${esc(u.name)}">Reset password</button>`}</td></tr>`;
+        <td>${otherLeader ? `<span class="small">${u.position === "Admin" ? "Admin" : "Leader lain"}</span>` : `<button class="btn mini" data-action="user-reset" data-id="${u.id}" data-name="${esc(u.name)}">Reset password</button>`}</td></tr>`;
       }).join("")}
     </tbody></table></div>`);
   newUserApps();

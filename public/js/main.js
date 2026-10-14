@@ -1,4 +1,4 @@
-import { $, api, ApiError, closeModal, delegate, errorText, esc, icon, isLeader, myApps, reloadContents, state, toast } from "./core.js";
+import { $, api, ApiError, closeModal, delegate, errorText, esc, icon, isAdmin, isLeader, myApps, reloadContents, state, toast } from "./core.js";
 import { renderCalendar } from "./calendar.js";
 import { openContentPicker, openDetail } from "./editor.js";
 import { renderSettings } from "./settings.js";
@@ -23,7 +23,7 @@ function allowedPages() {
 function pageTitle(page) {
   const { role } = state.me;
   return {
-    dashboard: isLeader() ? `Dashboard Leader ${role}` : `Dashboard ${role}`,
+    dashboard: isAdmin() ? `Dashboard Admin · Tim ${role}` : isLeader() ? `Dashboard Leader ${role}` : `Dashboard ${role}`,
     create: role === "Creative" ? "Produksi konten" : "Worksheet konten",
     calendar: "Konten kalender",
     settings: "Setting",
@@ -71,18 +71,37 @@ async function boot() {
   }
   $("loginView").classList.add("hidden");
   $("appView").classList.remove("hidden");
-  const { name, position, role } = state.me;
-  const apps = myApps().map((id) => state.options.find((o) => o.id === id)?.label).filter(Boolean);
-  $("account").innerHTML = `<b>${esc(name)}</b><span>${esc(position)} · ${esc(role)}</span>${apps.length ? `<span class="account-apps">${esc(apps.join(" · "))}</span>` : ""}`;
+  // Admin memilih tim yang ditampilkan (dashboard, worksheet, performa mengikuti tim ini).
+  if (isAdmin()) {
+    let saved = null;
+    try {
+      saved = localStorage.getItem("creaboard:viewRole");
+    } catch {
+      // penyimpanan tidak tersedia
+    }
+    if (["Marketing", "Creative"].includes(saved)) state.me.role = saved;
+  }
   $("settingsBtn").innerHTML = `${icon("settings")}<span>Setting</span>`;
   $("logoutBtn").innerHTML = `${icon("logout")}<span>Keluar</span>`;
   $("createButton").innerHTML = `${icon("plus", 16)}<span>Buat konten</span>`;
-  $("nav").innerHTML = allowedPages()
-    .map((p) => `<button data-page="${p}" data-action="nav">${icon(PAGES[p].icon)}<span>${p === "create" && role === "Creative" ? "Produksi konten" : PAGES[p].label}</span></button>`)
-    .join("");
+  renderShell();
   navigate(location.hash.slice(1) || "dashboard");
   syncAsideHeight();
   startLiveUpdates();
+}
+
+/** Akun, pilihan tim (Admin), dan menu sidebar. */
+function renderShell() {
+  const { name, position, role } = state.me;
+  const apps = myApps().map((id) => state.options.find((o) => o.id === id)?.label).filter(Boolean);
+  $("account").innerHTML = `<b>${esc(name)}</b><span>${esc(position)}${isAdmin() ? " · semua tim" : ` · ${esc(role)}`}</span>${apps.length ? `<span class="account-apps">${esc(apps.join(" · "))}</span>` : ""}`;
+  $("viewRole").classList.toggle("hidden", !isAdmin());
+  $("viewRole").innerHTML = isAdmin()
+    ? ["Marketing", "Creative"].map((r) => `<button type="button" data-action="view-role" data-role="${r}" class="${r === role ? "active" : ""}" aria-pressed="${r === role}">Tim ${r}</button>`).join("")
+    : "";
+  $("nav").innerHTML = allowedPages()
+    .map((p) => `<button data-page="${p}" data-action="nav">${icon(PAGES[p].icon)}<span>${p === "create" && role === "Creative" ? "Produksi konten" : PAGES[p].label}</span></button>`)
+    .join("");
 }
 
 function showLogin(message) {
@@ -108,6 +127,18 @@ $("loginForm").addEventListener("submit", async (e) => {
 // bila ada isian yang belum disimpan), baru pindah halaman.
 const leaveModal = () => $("overlay").classList.contains("hidden") || requestClose();
 delegate(document.body, "click", {
+  "view-role": async (el) => {
+    if (!leaveModal() || state.me.role === el.dataset.role) return;
+    state.me.role = el.dataset.role;
+    try {
+      localStorage.setItem("creaboard:viewRole", state.me.role);
+    } catch {
+      // penyimpanan tidak tersedia
+    }
+    clearDashCache();
+    renderShell();
+    await navigate(state.page);
+  },
   nav: (el) => leaveModal() && navigate(el.dataset.page),
   settings: () => leaveModal() && navigate("settings"),
   create: () => openContentPicker(),

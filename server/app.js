@@ -11,7 +11,7 @@ import {
 } from "./auth.js";
 import {
   actualCounts, addDays, applyWorkflow, canSee, contentFlags, DEADLINE_DAYS, defaultSheet, editableFields, fail, HttpError,
-  canDeleteContent, defaultScorecard, isDate, isHttpUrl, isLeader, normalizeScorecard, jakartaDate, leads, manages, mergeFootage, normalizeSheet, optionIndex, performance, scriptReadyErrors, titleFromSheet, TYPES,
+  canDeleteContent, defaultScorecard, isAdmin, isDate, isHttpUrl, isLeader, POSITIONS, normalizeScorecard, jakartaDate, leads, manages, mergeFootage, normalizeSheet, optionIndex, performance, scriptReadyErrors, titleFromSheet, TYPES,
 } from "./rules.js";
 
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
@@ -176,7 +176,7 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
   });
 
   route("POST", "/api/contents", async ({ user, body }) => {
-    if (user.role !== "Marketing") fail(403, "Pembuatan skrip tersedia untuk Marketing");
+    if (user.role !== "Marketing" && !isAdmin(user)) fail(403, "Pembuatan skrip tersedia untuk Marketing");
     const opts = await optionIndex(db);
     const type = TYPES.includes(body.type) ? body.type : fail(422, "Bentuk konten tidak valid");
     const sheet = normalizeSheet(type, body.sheet ?? defaultSheet(type));
@@ -196,7 +196,7 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
       sheet,
       priority: body.priority ?? null, // dinormalkan applyWorkflow ke id pilihan jenis skrip
       // Leader Marketing boleh langsung menugaskan skrip ke staff Marketing; staff selalu pemiliknya sendiri.
-      marketing_user_id: leads(user, "Marketing") && body.marketing_user_id ? Number(body.marketing_user_id) : user.id,
+      marketing_user_id: leads(user, "Marketing") && body.marketing_user_id ? Number(body.marketing_user_id) : user.role === "Marketing" ? user.id : null,
       creative_user_id: body.creative_user_id ? Number(body.creative_user_id) : null,
     };
     checkAppAllowed(user, draft.app);
@@ -422,7 +422,8 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
   };
   const monthOk = (m) => /^\d{4}-(0[1-9]|1[0-2])$/.test(m ?? "") || fail(422, "Bulan tidak valid");
   const teamStaff = async (user, id) =>
-    (await db.one("select id, role from users where id = ? and position = 'Staff' and role = ?", [Number(id) || 0, user.role])) ?? fail(422, "Hanya untuk staff tim yang Anda pimpin");
+    (await db.one("select id, role from users where id = ? and position = 'Staff' and role in ('Marketing','Creative') and (? = 1 or role = ?)", [Number(id) || 0, isAdmin(user) ? 1 : 0, user.role])) ??
+    fail(422, "Hanya untuk staff tim yang Anda pimpin");
 
   route("PUT", "/api/scorecard", async ({ user, body }) => {
     requireLeader(user);
@@ -513,8 +514,9 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
     const name = String(body.name ?? "").trim();
     if (!/^[a-zA-Z0-9._-]{3,40}$/.test(username)) fail(422, "Username 3–40 karakter (huruf, angka, . _ -)");
     if (!name) fail(422, "Nama wajib diisi");
-    if (!["Leader", "Staff"].includes(body.position) || !["Marketing", "Creative", "Talent"].includes(body.role)) fail(422, "Posisi/peran tidak valid");
-    if (body.position === "Leader" && body.role === "Talent") fail(422, "Leader hanya untuk Marketing atau Creative");
+    if (!POSITIONS.includes(body.position) || !["Marketing", "Creative", "Talent"].includes(body.role)) fail(422, "Posisi/peran tidak valid");
+    if (body.position === "Admin" && !isAdmin(user)) fail(403, "Akun Admin hanya bisa dibuat oleh Admin");
+    if (body.position !== "Staff" && body.role === "Talent") fail(422, `${body.position} hanya untuk Marketing atau Creative`);
     const err = validatePassword(body.password);
     if (err) fail(422, err);
     if (await db.one("select 1 from users where lower(username) = lower(?)", [username])) fail(409, "Username sudah dipakai");
@@ -538,16 +540,20 @@ export function createApp({ db, publicDir, uploadDir = null, maxUploadMb = 1024,
     requireLeader(user);
     const target = await db.one("select * from users where id = ?", [Number(params.id) || 0]);
     if (!target) fail(404, "Akun tidak ditemukan");
-    if (target.id === user.id && (body.active === false || body.position === "Staff")) fail(422, "Anda tidak bisa menonaktifkan/menurunkan akun sendiri");
-    if (target.id === user.id && body.role !== undefined && body.role !== target.role) fail(422, "Anda tidak bisa mengubah peran akun sendiri");
-    if (target.id !== user.id && target.position === "Leader") fail(403, "Akun Leader lain hanya bisa diubah oleh pemilik akunnya");
+    const self = target.id === user.id;
+    if (self && (body.active === false || (body.position !== undefined && body.position !== target.position))) fail(422, "Anda tidak bisa menonaktifkan atau mengubah posisi akun sendiri");
+    if (self && body.role !== undefined && body.role !== target.role) fail(422, "Anda tidak bisa mengubah peran akun sendiri");
+    // Admin mengelola semua akun. Leader tidak bisa mengubah akun Admin maupun Leader lain.
+    if (!self && !isAdmin(user) && target.position === "Admin") fail(403, "Akun Admin hanya bisa diubah oleh Admin");
+    if (!self && !isAdmin(user) && target.position === "Leader") fail(403, "Akun Leader lain hanya bisa diubah oleh pemilik akunnya atau Admin");
+    if (body.position === "Admin" && !isAdmin(user)) fail(403, "Hanya Admin yang dapat menjadikan akun Admin");
     const next = {
       name: body.name !== undefined ? String(body.name).trim().slice(0, 100) || target.name : target.name,
-      position: ["Leader", "Staff"].includes(body.position) ? body.position : target.position,
+      position: POSITIONS.includes(body.position) ? body.position : target.position,
       role: ["Marketing", "Creative", "Talent"].includes(body.role) ? body.role : target.role,
       active: typeof body.active === "boolean" ? Number(body.active) : target.active,
     };
-    if (next.position === "Leader" && next.role === "Talent") fail(422, "Leader hanya untuk Marketing atau Creative");
+    if (next.position !== "Staff" && next.role === "Talent") fail(422, `${next.position} hanya untuk Marketing atau Creative`);
     if ((next.role !== target.role || next.position !== target.position) && (await db.one("select 1 from kpis where user_id = ? limit 1", [target.id]))) {
       fail(409, `${target.name} masih punya target KPI. Hapus targetnya dulu di Target KPI sebelum mengubah peran/posisi.`);
     }

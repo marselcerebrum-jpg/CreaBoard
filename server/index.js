@@ -34,14 +34,14 @@ export async function connect() {
 
 async function main() {
   const { db } = await connect();
-  // Akun Leader Marketing pertama dibuat otomatis bila database masih kosong.
+  // Akun Admin pertama dibuat otomatis bila database masih kosong.
   const { n } = await db.one("select count(*)::int n from users");
   if (n === 0) {
     const username = process.env.ADMIN_USERNAME ?? "leader";
     const password = process.env.ADMIN_PASSWORD ?? randomBytes(9).toString("base64url");
-    await db.run("insert into users (username, name, position, role, password_hash) values (?, ?, 'Leader', 'Marketing', ?)",
-      [username, process.env.ADMIN_NAME ?? "Leader", hashPassword(password)]);
-    console.log(`\n  Akun Leader pertama dibuat → username: ${username}  password: ${password}`);
+    await db.run("insert into users (username, name, position, role, password_hash) values (?, ?, 'Admin', 'Marketing', ?)",
+      [username, process.env.ADMIN_NAME ?? "Admin", hashPassword(password)]);
+    console.log(`\n  Akun Admin pertama dibuat → username: ${username}  password: ${password}`);
     console.log("  Segera ganti password lewat menu Setting.\n");
   }
   const port = Number(process.env.PORT ?? 3000);

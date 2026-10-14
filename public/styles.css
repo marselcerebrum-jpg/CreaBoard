@@ -801,3 +801,10 @@ tr:hover td { background: #FDFDF5; }
 .sc-edit-note { margin: 0 0 12px; padding: 10px 12px; border-radius: 8px; background: var(--warn-bg); border: 1px solid var(--warn-line); font-size: 13px; }
 .sc-edit-actions { display: flex; gap: 10px; align-items: center; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); flex-wrap: wrap; }
 .sc-edit-actions .grow { flex: 1; }
+
+/* Admin: pilihan tim yang ditampilkan */
+.view-role { display: flex; gap: 4px; margin-top: 10px; padding: 4px; border-radius: 10px; background: #00000026; }
+.view-role.hidden { display: none; }
+.view-role button { flex: 1; padding: 7px 6px; border: 0; border-radius: 7px; background: none; color: var(--stone); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.view-role button.active { background: #fff; color: var(--heading); }
+@media (max-width: 760px) { .view-role { margin-top: 8px; } }

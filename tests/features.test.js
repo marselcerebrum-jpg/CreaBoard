@@ -308,3 +308,40 @@ test("scorecard: KPI per staff, berlaku mulai bulan disimpan, nilai manual per s
   assert.equal((await put(lm, { reset: true })).data.scorecardFrom, null);
   assert.equal((await nadiaOf("2026-12")).scorecard.team, "MARKETING");
 });
+
+test("admin: di atas Leader — semua tim, semua kolom, kelola akun Leader", async () => {
+  await db.run("insert into users (username, name, position, role, password_hash) values (?, ?, 'Admin', 'Creative', ?)", ["root", "Root", hashPassword("rahasia123")]);
+  const ad = await login("root");
+  const lm = await login("leader");
+  const leaderId = (await db.one("select id from users where username = 'leader'")).id;
+  const dimasId = (await db.one("select id from users where username = 'dimas'")).id;
+  const nadiaId = (await db.one("select id from users where username = 'nadia'")).id;
+  const app = O.find((o) => o.key === "app").id;
+
+  // Membuat skrip walau peran asalnya Creative; kolom Marketing & Creative bisa diubah.
+  let c = await ad.call("POST", "/api/contents", { type: "Carousel", app, sheet: { meta: ["Tema admin"], rows: [{ label: "Slide 1", text: "isi" }] } });
+  assert.equal(c.status, 200, JSON.stringify(c.data));
+  c = c.data;
+  for (const f of ["qc_status", "link", "upload_date", "marketing_user_id", "creative_user_id"]) assert.ok(c.editable.includes(f), f);
+  assert.equal(c.canDelete, true);
+
+  // Performa: staff kedua tim terlihat; KPI staff kedua tim bisa diatur.
+  const people = (await ad.call("GET", "/api/team?month=2026-10")).data.people.map((p) => p.user.id);
+  assert.ok(people.includes(dimasId) && people.includes(nadiaId));
+  const cfg = (await ad.call("GET", "/api/team?month=2026-10")).data.people[0].scorecard;
+  for (const id of [dimasId, nadiaId]) {
+    const r = await ad.call("PUT", "/api/scorecard", { user_id: id, month: "2026-10", config: { ...cfg, rows: cfg.rows.map((x) => ({ ...x, target: x.target ?? 10 })) } });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+  }
+
+  // Akun: Admin mengubah Leader; Leader tidak bisa menyentuh Admin atau membuat Admin.
+  const adminId = (await db.one("select id from users where username = 'root'")).id;
+  assert.equal((await ad.call("PATCH", `/api/users/${leaderId}`, { name: "Alya L" })).status, 200);
+  assert.equal((await lm.call("PATCH", `/api/users/${adminId}`, { active: false })).status, 403);
+  assert.equal((await lm.call("POST", "/api/users", { name: "X", username: "xadmin", position: "Admin", role: "Marketing", password: "rahasia123" })).status, 403);
+  assert.equal((await lm.call("PATCH", `/api/users/${nadiaId}`, { position: "Admin" })).status, 403);
+  assert.equal((await ad.call("POST", "/api/users", { name: "Admin 2", username: "admin2", position: "Admin", role: "Marketing", password: "rahasia123" })).status, 200);
+  assert.equal((await ad.call("PATCH", `/api/users/${adminId}`, { position: "Leader" })).status, 422, "tidak bisa menurunkan diri sendiri");
+  assert.equal((await db.one("select name from users where id = ?", [leaderId])).name, "Alya L");
+  await db.run("update users set name = 'Alya' where id = ?", [leaderId]);
+});
