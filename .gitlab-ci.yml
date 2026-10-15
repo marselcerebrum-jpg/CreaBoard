@@ -1,0 +1,188 @@
+# =============================================================================
+#  GitLab CI — gerbang tes, lalu build + deploy ke GCP Cloud Run
+#
+#  Pola sama dengan product-task-tracker: pipeline hanya terpicu oleh tag git.
+#    tag git → test → build manual → deploy prod manual (APP_ENV=production)
+#  Variabel CI & setup sekali ada di README bagian "Deploy ke Cloud Run".
+#
+#  Footage unggahan disimpan di /app/data/uploads. Di Cloud Run disk lokal hilang
+#  tiap instance diganti, jadi folder itu di-mount ke bucket GCS (UPLOAD_BUCKET).
+# =============================================================================
+
+# Semua job butuh executor Docker; runner tanpa tag memakai executor SHELL.
+default:
+  tags:
+    - self-runner
+
+# Hanya GCP_PROJECT, GCP_REGISTRY_URL, dan SERVICE_ACCOUNT_KEY dari variabel group.
+# Host ditulis langsung, bukan dari GCP_REGISTRY_URL (berawalan https://).
+variables:
+  IMAGE_BASE: "asia-southeast1-docker.pkg.dev/${GCP_PROJECT}/cerebrum-internal-project/creative-desk"
+
+image: node:22
+
+workflow:
+  rules:
+    - if: $CI_COMMIT_TAG
+
+stages:
+  - test
+  - build
+  - deploy
+
+test:
+  stage: test
+  cache:
+    key:
+      files:
+        - package-lock.json
+    paths:
+      - .npm/
+  script:
+    # Lockfile di-commit di repo ini, jadi `npm ci` (beda dengan product-task-tracker).
+    - npm ci --cache .npm --prefer-offline --no-audit --no-fund
+    - npm test
+
+### RULES TEMPLATES
+.prod-rules:
+  only:
+    - tags
+  when: manual
+
+### BUILD APP TEMPLATES
+.build-app-template:
+  stage: build
+  image: docker:24.0.5
+  services:
+    - name: docker:24.0.5-dind
+  needs:
+    - test
+  before_script:
+    - echo "$SERVICE_ACCOUNT_KEY" | docker login -u _json_key --password-stdin $GCP_REGISTRY_URL
+  script:
+    - docker pull ${DOCKER_IMAGE_TAG}:latest || true
+    - docker build -f Dockerfile --cache-from ${DOCKER_IMAGE_TAG}:latest -t ${DOCKER_IMAGE_TAG}:latest -t ${DOCKER_IMAGE_TAG}:${IMAGE_TAG} .
+    - docker push ${DOCKER_IMAGE_TAG}:${IMAGE_TAG}
+    - docker push ${DOCKER_IMAGE_TAG}:latest
+
+### DEPLOY TEMPLATES
+# Secret aplikasi (DATABASE_URL, ADMIN_*) diset SEKALI di service Cloud Run;
+# `gcloud run deploy` mempertahankannya.
+# Volume GCS butuh execution environment gen2; uid/gid 1000 = user `node` di Dockerfile.
+# MAX_UPLOAD_MB=30: Cloud Run menolak body request > 32 MB, jadi app menolak lebih dulu
+# dengan pesan yang jelas.
+# ponytail: max-instances 1 — pembaruan otomatis (/api/stream) disiarkan di memori proses;
+# instance kedua tak menerima siarannya. Naikkan setelah broadcast lewat DB/pubsub.
+.deploy-template:
+  stage: deploy
+  image: google/cloud-sdk:alpine
+  before_script:
+    - gcloud auth activate-service-account --key-file <(echo "$SERVICE_ACCOUNT_KEY")
+  script:
+    - gcloud config set project ${GCP_PROJECT_ID}
+    - >-
+      gcloud run deploy ${DEPLOYMENT_NAME}
+      --image ${DOCKER_IMAGE_TAG}:${IMAGE_TAG}
+      --region=${CLOUD_RUN_REGION}
+      --platform managed --memory 512Mi --max-instances 1 --port 8080
+      --allow-unauthenticated --ingress ${INGRESS}
+      --execution-environment gen2
+      --clear-volumes --clear-volume-mounts
+      --add-volume "name=uploads,type=cloud-storage,bucket=${UPLOAD_BUCKET},mount-options=uid=1000;gid=1000"
+      --add-volume-mount volume=uploads,mount-path=/app/data/uploads
+      --update-env-vars APP_ENV=${APP_ENV},SECURE_COOKIES=1,TRUST_PROXY=1,UPLOAD_DIR=/app/data/uploads,MAX_UPLOAD_MB=30
+  after_script:
+    - |
+      if [ -z "${DISCORD_WEBHOOK_URL}" ]; then
+        echo "[SKIP] DISCORD_WEBHOOK_URL belum di-set — notifikasi dilewati."
+        exit 0
+      fi
+    - apk add --no-cache curl jq >/dev/null 2>&1
+    - |
+      case "${CI_JOB_STATUS}" in
+        success)
+          STATUS_ICON="✅"
+          STATUS_TEXT="SUCCESS BOSS"
+          COLOR=14177041
+          ;;
+        failed)
+          STATUS_ICON="❌"
+          STATUS_TEXT="FAILED BOSS"
+          COLOR=15158332
+          ;;
+        canceled)
+          STATUS_ICON="⚠️"
+          STATUS_TEXT="CANCELED BOSS"
+          COLOR=15844367
+          ;;
+        *)
+          STATUS_ICON="ℹ️"
+          STATUS_TEXT="$(echo ${CI_JOB_STATUS} | tr '[:lower:]' '[:upper:]')"
+          COLOR=8421504
+          ;;
+      esac
+
+      TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
+
+      PAYLOAD=$(jq -n \
+        --arg icon "$STATUS_ICON" \
+        --arg status "$STATUS_TEXT" \
+        --arg project "$CI_PROJECT_NAME" \
+        --arg service "$DEPLOYMENT_NAME" \
+        --arg image_tag "$IMAGE_TAG" \
+        --arg triggered_by "$GITLAB_USER_LOGIN" \
+        --arg pipeline_url "$CI_PIPELINE_URL" \
+        --argjson color "$COLOR" \
+        --arg ts "$TIMESTAMP" \
+        '{
+          embeds: [{
+            title: "\($icon) DEPLOYMENT \($status)",
+            color: $color,
+            url: $pipeline_url,
+            fields: [
+              { name: "Project", value: $project, inline: true },
+              { name: "Status", value: $status, inline: true },
+              { name: "Service", value: $service, inline: false },
+              { name: "Image Tag", value: "`\($image_tag)`", inline: true },
+              { name: "Triggered By", value: $triggered_by, inline: true }
+            ],
+            footer: { text: "Cerebrum Deployment" },
+            timestamp: $ts
+          }]
+        }')
+
+      curl -X POST "$DISCORD_WEBHOOK_URL" \
+        -H "Content-Type: application/json" \
+        --max-time 10 --retry 3 --retry-delay 2 --retry-connrefused \
+        -d "${PAYLOAD}" \
+        -w "\nWebhook HTTP Status: %{http_code}\n" \
+        || echo "[WARN] Webhook delivery failed for ${DEPLOYMENT_NAME} — not blocking pipeline"
+
+### BUILD PHASE
+# Hanya prod (dari tag git). Tambah job dev/staging kalau branch-nya sudah ada.
+build-app-prod:
+  extends:
+    - .build-app-template
+    - .prod-rules
+  variables:
+    DOCKER_IMAGE_TAG: "${IMAGE_BASE}-prod"
+    IMAGE_TAG: "$CI_COMMIT_TAG"
+
+### DEPLOY PHASE
+deploy-prod:
+  extends:
+    - .deploy-template
+    - .prod-rules
+  environment:
+    name: production
+  variables:
+    GCP_PROJECT_ID: "${GCP_PROJECT}"
+    CLOUD_RUN_REGION: "asia-southeast2"
+    DOCKER_IMAGE_TAG: "${IMAGE_BASE}-prod"
+    IMAGE_TAG: "$CI_COMMIT_TAG"
+    DEPLOYMENT_NAME: "creative-desk-service"
+    UPLOAD_BUCKET: "creative-desk-uploads"
+    INGRESS: "all"
+    APP_ENV: "production"
+  needs:
+    - build-app-prod

@@ -77,6 +77,17 @@ Untuk mengosongkan data lokal: hentikan server, hapus folder `data/`, lalu jalan
 
 Update: `cd /opt/creaboard && git pull && docker compose up -d --build`.
 
+## Deploy ke Cloud Run (GitLab CI)
+
+`.gitlab-ci.yml` hanya berjalan untuk tag git: `test` → `build-app-prod` (manual) → `deploy-prod` (manual), service `creative-desk-service` di `asia-southeast2`.
+
+- **Variabel CI (group):** `GCP_PROJECT`, `GCP_REGISTRY_URL`, `SERVICE_ACCOUNT_KEY`; opsional `DISCORD_WEBHOOK_URL` untuk notifikasi.
+- **Setup sekali:**
+  1. Buat bucket `creative-desk-uploads` (asia-southeast2) dan beri service account runtime Cloud Run peran `roles/storage.objectUser` di bucket itu — folder footage `/app/data/uploads` di-mount ke bucket ini.
+  2. Setelah deploy pertama, set `DATABASE_URL` dan `ADMIN_*` di service Cloud Run (deploy berikutnya mempertahankannya). Cloud SQL perlu koneksi dari Cloud Run (mis. `--add-cloudsql-instances`).
+- **Rilis:** `git tag v1.2.3 && git push origin v1.2.3`, lalu jalankan build dan deploy dari halaman pipeline.
+- **Batasan:** unggah langsung maks 30 MB per file (Cloud Run menolak body > 32 MB) — footage lebih besar pakai link Drive. Service dibatasi 1 instance karena pembaruan otomatis disiarkan di memori proses.
+
 ## Operasional
 
 - **Backup:** MySQL — ikut backup otomatis Cloud SQL / ekspor dari phpMyAdmin. Postgres — `pg_dump -n creaboard`. File footage ada di volume Docker `creaboard_uploads`.
