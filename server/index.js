@@ -9,19 +9,30 @@ import { createMysqlPool, fromMysql, fromPglite, fromPool, migrate } from "./db.
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-/** Produksi: DATABASE_URL (mysql://… atau postgres://…). Lokal tanpa DATABASE_URL: PGlite di data/pglite. */
+/** DATABASE_URL, atau dirakit dari DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME (DB_CLIENT: mysql | postgres).
+ *  Password di-encode di sini, jadi karakter seperti \ + ? , { aman dipakai apa adanya. */
+export function databaseUrl(env = process.env) {
+  if (env.DATABASE_URL || !env.DB_HOST) return env.DATABASE_URL;
+  const client = env.DB_CLIENT ?? "mysql";
+  const port = env.DB_PORT ?? (client === "mysql" ? "3306" : "5432");
+  const auth = `${encodeURIComponent(env.DB_USER ?? "")}:${encodeURIComponent(env.DB_PASSWORD ?? "")}`;
+  return `${client}://${auth}@${env.DB_HOST}:${port}/${encodeURIComponent(env.DB_NAME ?? "")}`;
+}
+
+/** Produksi: DATABASE_URL / DB_* (MySQL atau Postgres). Lokal tanpa keduanya: PGlite di data/pglite. */
 export async function connect() {
-  if (/^mysql:/i.test(process.env.DATABASE_URL ?? "")) {
-    const pool = await createMysqlPool(process.env.DATABASE_URL, {
+  const url = databaseUrl();
+  if (/^mysql:/i.test(url ?? "")) {
+    const pool = await createMysqlPool(url, {
       connectionLimit: Number(process.env.DB_POOL_SIZE ?? 10),
       // DB_SSL_CA_FILE: sertifikat server (PEM) bila terhubung langsung lewat IP publik dengan SSL.
       ssl: process.env.DB_SSL_CA_FILE ? { ca: readFileSync(process.env.DB_SSL_CA_FILE, "utf8") } : undefined,
     });
     return { db: await migrate(fromMysql(pool)), close: () => pool.end() };
   }
-  if (process.env.DATABASE_URL) {
+  if (url) {
     const { default: pg } = await import("pg");
-    const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: Number(process.env.DB_POOL_SIZE ?? 10) });
+    const pool = new pg.Pool({ connectionString: url, max: Number(process.env.DB_POOL_SIZE ?? 10) });
     pool.on("error", (e) => console.error("[db]", e.message));
     return { db: await migrate(fromPool(pool)), close: () => pool.end() };
   }

@@ -54,6 +54,7 @@ Untuk mengosongkan data lokal: hentikan server, hapus folder `data/`, lalu jalan
 | `PORT` | `3000` | Port HTTP |
 | `HOST` | `0.0.0.0` | Alamat yang didengarkan (`127.0.0.1` = hanya komputer ini) |
 | `DATABASE_URL` | – | `mysql://user:…@host:3306/marsel_creative_desk` (MySQL 8) atau `postgres://…` (Postgres). Kosong = PGlite lokal |
+| `DB_CLIENT` / `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASSWORD` / `DB_NAME` | `mysql` / – / `3306` (Postgres `5432`) / – / – / – | Pengganti `DATABASE_URL` bila diisi terpisah (dipakai saat `DATABASE_URL` kosong dan `DB_HOST` terisi). Password boleh berisi karakter khusus apa adanya. `DB_CLIENT`: `mysql` atau `postgres` |
 | `DB_SSL_CA_FILE` | – | File sertifikat CA server MySQL (PEM) bila terhubung langsung lewat IP publik dengan SSL |
 | `PGLITE_DIR` | `data/pglite` | Lokasi database PGlite (hanya bila `DATABASE_URL` kosong) |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` / `ADMIN_NAME` | `leader` / acak / `Leader` | Akun Leader pertama (hanya saat database kosong) |
@@ -84,7 +85,7 @@ Update: `cd /opt/creaboard && git pull && docker compose up -d --build`.
 - **Variabel CI (group):** `GCP_PROJECT`, `GCP_REGISTRY_URL`, `SERVICE_ACCOUNT_KEY`; opsional `DISCORD_WEBHOOK_URL` untuk notifikasi.
 - **Setup sekali:**
   1. Buat bucket `creative-desk-uploads` (asia-southeast2) dan beri service account runtime Cloud Run peran `roles/storage.objectUser` di bucket itu — folder footage `/app/data/uploads` di-mount ke bucket ini.
-  2. Setelah deploy pertama, set `DATABASE_URL` dan `ADMIN_*` di service Cloud Run (deploy berikutnya mempertahankannya). Cloud SQL perlu koneksi dari Cloud Run (mis. `--add-cloudsql-instances`).
+  2. Di service Cloud Run (Edit & deploy new revision → Variables & Secrets), isi `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` (atau satu `DATABASE_URL`) dan `ADMIN_PASSWORD` — deploy berikutnya mempertahankannya. Tanpa database, container langsung berhenti. Simpan `DB_PASSWORD` di Secret Manager. DB di IP privat (`10.x`) perlu Networking → Connect to a VPC for outbound traffic.
 - **Rilis:** `git tag v1.2.3 && git push origin v1.2.3`, lalu jalankan build dan deploy dari halaman pipeline.
 - **Batasan:** unggah langsung maks 30 MB per file (Cloud Run menolak body > 32 MB) — footage lebih besar pakai link Drive. Service dibatasi 1 instance karena pembaruan otomatis disiarkan di memori proses.
 
