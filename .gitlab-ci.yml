@@ -64,6 +64,9 @@ test:
     - docker build -f Dockerfile --cache-from ${DOCKER_IMAGE_TAG}:latest -t ${DOCKER_IMAGE_TAG}:latest -t ${DOCKER_IMAGE_TAG}:${IMAGE_TAG} .
     - docker push ${DOCKER_IMAGE_TAG}:${IMAGE_TAG}
     - docker push ${DOCKER_IMAGE_TAG}:latest
+  after_script:
+    - docker rmi ${DOCKER_IMAGE_TAG}:${IMAGE_TAG} || true
+    - docker rmi ${DOCKER_IMAGE_TAG}:latest || true
 
 ### DEPLOY TEMPLATES
 # Secret aplikasi (DATABASE_URL, ADMIN_*) diset SEKALI di service Cloud Run;
